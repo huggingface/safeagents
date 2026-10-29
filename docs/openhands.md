@@ -14,10 +14,10 @@ For OpenAI models, also set `api_mode="chat"`. In `auto` mode, the SDK uses the 
 
 ```bash
 # Claude models
-uv run safeagents --upstream https://api.anthropic.com --log-only
+uv run safeagents https://api.anthropic.com --log-only
 
 # OpenAI models, or any OpenAI-compatible server
-uv run safeagents --upstream https://api.openai.com --log-only
+uv run safeagents https://api.openai.com --log-only
 ```
 
 ## 2. Point the SDK at it

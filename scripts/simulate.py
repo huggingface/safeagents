@@ -19,8 +19,8 @@ Cohere report and similar. Several agents run at once, each replaying the sessio
 with random pauses, so their calls interleave. Nothing is executed: the calls only
 travel as JSON.
 
-    uv run safeagents --upstream http://127.0.0.1:18081      # terminal 1
-    uv run python scripts/simulate.py                         # terminal 2
+    uv run safeagents http://127.0.0.1:18081    # terminal 1
+    uv run python scripts/simulate.py           # terminal 2
 """
 
 import argparse
@@ -113,9 +113,7 @@ def send(proxy: str, model_port: int, turn: int) -> bool:
     try:
         reply = json.loads(urllib.request.urlopen(request, timeout=10).read())
     except OSError as e:
-        raise SystemExit(
-            f"can't reach safeagents at {proxy} ({e}); start it with --upstream http://127.0.0.1:{model_port}"
-        ) from e
+        raise SystemExit(f"can't reach safeagents at {proxy} ({e}); start it with `safeagents {model_port}`") from e
     return any(b.get("type") == "tool_use" for b in reply.get("content", []))
 
 

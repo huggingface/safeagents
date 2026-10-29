@@ -8,7 +8,7 @@ By default, dsh talks to DeepSeek through its native `llm-deepseek` adapter, whi
 ## 1. Start the proxy
 
 ```bash
-uv run safeagents --upstream https://api.deepseek.com/anthropic --log-only
+uv run safeagents https://api.deepseek.com/anthropic --log-only
 ```
 
 ## 2. Point dsh at it

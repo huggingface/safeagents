@@ -17,7 +17,7 @@ safeagents forwards Responses API traffic but can't read its tool calls. If you 
 This setup is ready for when Responses support lands. It's also useful for checking that traffic reaches the proxy.
 
 ```bash
-uv run safeagents --upstream https://api.openai.com
+uv run safeagents https://api.openai.com
 ```
 
 Then in `~/.codex/config.toml` (or `$CODEX_HOME/config.toml`):

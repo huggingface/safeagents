@@ -12,10 +12,10 @@ OpenCode reaches models through the Vercel AI SDK, and each provider in `opencod
 
 ```bash
 # Claude models
-uv run safeagents --upstream https://api.anthropic.com --log-only
+uv run safeagents https://api.anthropic.com --log-only
 
 # OpenAI models, or any OpenAI-compatible server (llama.cpp, vLLM, ...)
-uv run safeagents --upstream https://api.openai.com --log-only
+uv run safeagents https://api.openai.com --log-only
 ```
 
 ## 2. Point OpenCode at it

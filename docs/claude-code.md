@@ -11,13 +11,13 @@ Pick the upstream that Claude Code would normally use:
 
 ```bash
 # Anthropic API (Console key or claude.ai subscription login)
-uv run safeagents --upstream https://api.anthropic.com --log-only
+uv run safeagents https://api.anthropic.com --log-only
 
 # OpenRouter or another Anthropic-compatible gateway
-uv run safeagents --upstream https://openrouter.ai/api --log-only
+uv run safeagents https://openrouter.ai/api --log-only
 ```
 
-Don't add `/v1` to `--upstream`. Claude Code requests `/v1/messages` itself, and safeagents forwards that path as is.
+Don't add `/v1` to the upstream URL. Claude Code requests `/v1/messages` itself, and safeagents forwards that path as is.
 
 ## 2. Point Claude Code at it
 

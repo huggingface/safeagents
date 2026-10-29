@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""safeagents --upstream <url> [options]
+"""safeagents <url> [port or host:port] [options]
 safeagents inspect [N]"""
 
 from __future__ import annotations
@@ -30,9 +30,9 @@ from .guard import Config
 from .journal import DEFAULT_PATH, Journal
 from .policy import DEFAULT_ALLOWED_HOSTS
 
-DESCRIPTION = """Proxies OpenAI- or Anthropic-compatible traffic to <url> and blocks tool calls that
+DESCRIPTION = """Proxies OpenAI- or Anthropic-compatible traffic to the upstream and blocks tool calls that
 use an undeclared tool, reach a host appearing nowhere in the conversation, or trip
-atif-scan's checks. Point your agent's base URL at --listen. Run `safeagents inspect`
+atif-scan's checks. Point your agent's base URL at the listen address. Run `safeagents inspect`
 to see the calls it flagged."""
 
 
@@ -44,8 +44,15 @@ def main(argv: list[str] | None = None) -> None:
         return
 
     parser = argparse.ArgumentParser(prog="safeagents", description=DESCRIPTION)
-    parser.add_argument("--upstream", required=True, help="model server base URL")
-    parser.add_argument("--listen", default="127.0.0.1:8787", help="address to listen on (default %(default)s)")
+    parser.add_argument("upstream", metavar="URL", help="model server base URL")
+    parser.add_argument(
+        "listen",
+        nargs="?",
+        default="127.0.0.1:8787",
+        type=_listen,
+        metavar="PORT_OR_ADDRESS",
+        help="port or host:port to listen on; a bare port listens on 127.0.0.1 (default %(default)s)",
+    )
     parser.add_argument(
         "--allow-host", action="append", default=[], metavar="HOST", help="host calls may reach (repeatable)"
     )
@@ -121,6 +128,13 @@ def main(argv: list[str] | None = None) -> None:
     with Monitor(setup=f"{args.listen} → {args.upstream}") as config.monitor:
         app = create_app(args.upstream, config)
         uvicorn.run(app, host=host or "127.0.0.1", port=int(port), log_level="warning")
+
+
+def _listen(value: str) -> str:
+    """A bare port listens on this machine only."""
+    if value.isdigit():
+        return f"127.0.0.1:{value}"
+    return value
 
 
 def inspect(argv: list[str]) -> None:
