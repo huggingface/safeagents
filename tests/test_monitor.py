@@ -46,7 +46,11 @@ def test_every_verdict_is_printed_and_counted():
     assert "cat /proc/1/environ  side_channel.harness_secret_read (medium)" in lines[1]
     assert f"host `{OSS}` appears nowhere" in lines[2]
     assert {key: monitor.counts[key] for key in ("calls", "passed", "suspicious", "flagged", "blocked")} == {
-        "calls": 4, "passed": 1, "suspicious": 1, "flagged": 1, "blocked": 1,
+        "calls": 4,
+        "passed": 1,
+        "suspicious": 1,
+        "flagged": 1,
+        "blocked": 1,
     }
 
 
@@ -73,8 +77,11 @@ def test_summary_picks_the_telling_argument():
 def test_only_model_turns_count_as_requests():
     monitor, _ = make_monitor()
     body = {"content": [{"type": "text", "text": "hi"}], "stop_reason": "end_turn"}
-    app = create_app("http://model", Config(scanner=None, monitor=monitor),
-                     transport=httpx.MockTransport(lambda _: httpx.Response(200, json=body)))
+    app = create_app(
+        "http://model",
+        Config(scanner=None, monitor=monitor),
+        transport=httpx.MockTransport(lambda _: httpx.Response(200, json=body)),
+    )
 
     async def go():
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://proxy") as client:

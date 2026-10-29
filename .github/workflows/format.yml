@@ -1,0 +1,28 @@
+# Checks that the code is formatted with ruff (settings in pyproject.toml).
+# Fix locally with: uvx ruff@0.17.3 format .
+name: format
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  RUFF_VERSION: "0.17.3"
+
+jobs:
+  ruff-format:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@18d369b23da25a81e9458561248e1aafff6a70fa # v10.3.1
+
+      - name: ruff format --check
+        run: uvx "ruff@${RUFF_VERSION}" format --check --diff .

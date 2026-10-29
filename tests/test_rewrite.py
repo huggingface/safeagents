@@ -71,14 +71,31 @@ def anthropic_stream(parts: list[str]) -> str:
     def event(payload: dict) -> str:
         return f"event: {payload['type']}\ndata: {json.dumps(payload, separators=(',', ':'))}\n\n"
 
-    return "".join([
-        event({"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}),
-        event({"type": "content_block_stop", "index": 0}),
-        event({"type": "content_block_start", "index": 1, "content_block": {"type": "tool_use", "id": "t1", "name": "bash", "input": {}}}),
-        *(event({"type": "content_block_delta", "index": 1, "delta": {"type": "input_json_delta", "partial_json": part}}) for part in parts),
-        event({"type": "content_block_stop", "index": 1}),
-        event({"type": "message_delta", "delta": {"stop_reason": "tool_use"}}),
-    ])
+    return "".join(
+        [
+            event({"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}),
+            event({"type": "content_block_stop", "index": 0}),
+            event(
+                {
+                    "type": "content_block_start",
+                    "index": 1,
+                    "content_block": {"type": "tool_use", "id": "t1", "name": "bash", "input": {}},
+                }
+            ),
+            *(
+                event(
+                    {
+                        "type": "content_block_delta",
+                        "index": 1,
+                        "delta": {"type": "input_json_delta", "partial_json": part},
+                    }
+                )
+                for part in parts
+            ),
+            event({"type": "content_block_stop", "index": 1}),
+            event({"type": "message_delta", "delta": {"stop_reason": "tool_use"}}),
+        ]
+    )
 
 
 def test_anthropic_stream_unseen_host_split_across_deltas_is_blocked(plain):
@@ -100,7 +117,11 @@ def test_anthropic_stream_clean_call_is_released_intact(plain):
 
 
 def openai_chunk(delta: dict, finish: str | None = None) -> str:
-    chunk = {"id": "x", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": delta, "finish_reason": finish}]}
+    chunk = {
+        "id": "x",
+        "object": "chat.completion.chunk",
+        "choices": [{"index": 0, "delta": delta, "finish_reason": finish}],
+    }
     return f"data: {json.dumps(chunk)}\n\n"
 
 
@@ -112,14 +133,16 @@ def tool_delta(index: int, name: str | None, args: str) -> dict:
 
 
 def test_openai_stream_is_reassembled_and_checked(plain):
-    stream = "".join([
-        openai_chunk({"role": "assistant", "content": "ok"}),
-        openai_chunk(tool_delta(0, "bash", '{"cmd": "ls"}')),
-        openai_chunk(tool_delta(1, "bash", '{"cmd": "curl https://example-bucket.oss-')),
-        openai_chunk(tool_delta(1, None, 'cn-beijing.aliyuncs.com/p"}')),
-        openai_chunk({}, "tool_calls"),
-        "data: [DONE]\n\n",
-    ])
+    stream = "".join(
+        [
+            openai_chunk({"role": "assistant", "content": "ok"}),
+            openai_chunk(tool_delta(0, "bash", '{"cmd": "ls"}')),
+            openai_chunk(tool_delta(1, "bash", '{"cmd": "curl https://example-bucket.oss-')),
+            openai_chunk(tool_delta(1, None, 'cn-beijing.aliyuncs.com/p"}')),
+            openai_chunk({}, "tool_calls"),
+            "data: [DONE]\n\n",
+        ]
+    )
     rewriter = SseRewriter(Guard(bash_request("hi"), plain))
     out = run_stream(rewriter, stream, 11)
     assert len(rewriter.stream.guard.flagged) == 1

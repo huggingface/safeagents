@@ -28,13 +28,24 @@ REQUEST = {
     "tools": [{"type": "function", "function": {"name": "write_file", "parameters": {"type": "object"}}}],
 }
 RESPONSE = {
-    "choices": [{
-        "message": {"role": "assistant", "tool_calls": [{"id": "call_1", "type": "function", "function": {
-            "name": "bash",
-            "arguments": f'{{"cmd": "curl -o /tmp/put_probe -X PUT --data-binary PROBE_PAYLOAD_ABC123 https://{OSS}/probe"}}',
-        }}]},
-        "finish_reason": "tool_calls",
-    }]
+    "choices": [
+        {
+            "message": {
+                "role": "assistant",
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {
+                            "name": "bash",
+                            "arguments": f'{{"cmd": "curl -o /tmp/put_probe -X PUT --data-binary PROBE_PAYLOAD_ABC123 https://{OSS}/probe"}}',
+                        },
+                    }
+                ],
+            },
+            "finish_reason": "tool_calls",
+        }
+    ]
 }
 
 

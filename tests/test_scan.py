@@ -42,13 +42,19 @@ def test_findings_on_the_pending_call():
 def test_trace_quality_checks_are_ignored():
     request = bash_request("hi")
     request["tools"].append({"type": "function", "function": {"name": "WebFetch"}})
-    assert {signal.id for signal in SCANNER.signals(history(request), [("WebFetch", '{"url": "https://docs.python.org/3/"}')])} == set()
+    assert {
+        signal.id
+        for signal in SCANNER.signals(history(request), [("WebFetch", '{"url": "https://docs.python.org/3/"}')])
+    } == set()
 
 
 def test_findings_on_earlier_turns_are_ignored():
     request = bash_request("hi")
     request["messages"] += [
-        {"role": "assistant", "tool_calls": [{"id": "a", "type": "function", "function": {"name": "bash", "arguments": ENVIRON}}]},
+        {
+            "role": "assistant",
+            "tool_calls": [{"id": "a", "type": "function", "function": {"name": "bash", "arguments": ENVIRON}}],
+        },
         {"role": "tool", "tool_call_id": "a", "content": "PATH=/bin"},
     ]
     assert ids(request, '{"command": "ls"}') == set()
@@ -58,12 +64,20 @@ ANTHROPIC = {
     "system": [{"type": "text", "text": "You are a coding agent."}],
     "messages": [
         {"role": "user", "content": "fix the tests"},
-        {"role": "assistant", "content": [
-            {"type": "thinking", "thinking": "SECRET_REASONING"},
-            {"type": "text", "text": "Running them."},
-            {"type": "tool_use", "id": "t1", "name": "Bash", "input": {"command": "pytest"}},
-        ]},
-        {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": [{"type": "text", "text": "1 failed"}]}]},
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "thinking", "thinking": "SECRET_REASONING"},
+                {"type": "text", "text": "Running them."},
+                {"type": "tool_use", "id": "t1", "name": "Bash", "input": {"command": "pytest"}},
+            ],
+        },
+        {
+            "role": "user",
+            "content": [
+                {"type": "tool_result", "tool_use_id": "t1", "content": [{"type": "text", "text": "1 failed"}]}
+            ],
+        },
     ],
     "tools": [{"name": "Bash", "input_schema": {}}],
 }
@@ -72,8 +86,14 @@ ANTHROPIC = {
 def test_history_converts_both_formats():
     openai = bash_request("hi")
     openai["messages"] += [
-        {"role": "assistant", "content": None, "reasoning_content": "SECRET_REASONING",
-         "tool_calls": [{"id": "a", "type": "function", "function": {"name": "bash", "arguments": '{"command": "ls"}'}}]},
+        {
+            "role": "assistant",
+            "content": None,
+            "reasoning_content": "SECRET_REASONING",
+            "tool_calls": [
+                {"id": "a", "type": "function", "function": {"name": "bash", "arguments": '{"command": "ls"}'}}
+            ],
+        },
         {"role": "tool", "tool_call_id": "a", "content": "README.md"},
     ]
     for request in (openai, ANTHROPIC):
@@ -81,7 +101,14 @@ def test_history_converts_both_formats():
         assert "SECRET_REASONING" not in json.dumps(steps)
         agent = next(step for step in steps if step.get("tool_calls"))
         assert agent["observation"]["results"][0]["source_call_id"] == agent["tool_calls"][0]["tool_call_id"]
-        parse_trace({"schema_version": "ATIF-v1.7", "steps": [{"step_id": index + 1, **step} for index, step in enumerate([*steps, call_step([("bash", "{}")])])]})
+        parse_trace(
+            {
+                "schema_version": "ATIF-v1.7",
+                "steps": [
+                    {"step_id": index + 1, **step} for index, step in enumerate([*steps, call_step([("bash", "{}")])])
+                ],
+            }
+        )
 
 
 def judge_returning(content: str | None, seen: list | None = None) -> Judge:
