@@ -61,7 +61,7 @@ def create_app(upstream: str, config: Config, transport: httpx.AsyncBaseTranspor
             request_json = json.loads(body) if body else None
         except ValueError:
             request_json = None
-        
+
         # Only JSON object bodies are model calls worth guarding.
         guard = None
         if isinstance(request_json, dict):
@@ -77,7 +77,7 @@ def create_app(upstream: str, config: Config, transport: httpx.AsyncBaseTranspor
         url = upstream + request.url.path
         if request.url.query:
             url += f"?{request.url.query}"
-        
+
         # Here we build the request that is going to be sent to the upstream request URL
         # we preserve its content and skip the meta-data from SKIP_REQUEST
         headers = [(name, value) for name, value in request.headers.raw if name.lower() not in SKIP_REQUEST]
