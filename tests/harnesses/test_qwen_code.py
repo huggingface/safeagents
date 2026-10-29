@@ -43,15 +43,6 @@ AUTH_TYPES = {
 # Environment variables that would override the settings file or leak real credentials.
 ISOLATED_PREFIXES = ("OPENAI_", "ANTHROPIC_", "DASHSCOPE_", "QWEN_")
 
-# Qwen Code's Anthropic stream parser reads text only from `text_delta` events, but
-# safeagents puts the notice in the `content_block_start` of the text block that
-# replaces a blocked call. Qwen Code sees an empty answer, retries, then fails.
-ANTHROPIC_NOTICE_NOT_SHOWN = pytest.mark.xfail(
-    reason="safeagents sends the Anthropic notice without a text_delta, which Qwen Code ignores",
-    raises=AssertionError,
-    strict=True,
-)
-
 
 @pytest.fixture(scope="module")
 def stack(tmp_path_factory):
@@ -120,13 +111,7 @@ def run_qwen(qwen_home: Path, workdir: Path, scenario: str) -> str:
     return completed.stdout
 
 
-@pytest.mark.parametrize(
-    "auth_type",
-    [
-        "openai",
-        pytest.param("anthropic", marks=ANTHROPIC_NOTICE_NOT_SHOWN),
-    ],
-)
+@pytest.mark.parametrize("auth_type", list(AUTH_TYPES))
 @pytest.mark.parametrize(("scenario", "reason"), BLOCKED_SCENARIOS)
 def test_flagged_call_is_blocked(stack, qwen_home, tmp_path, auth_type, scenario, reason):
     model, proxy = stack

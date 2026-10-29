@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "safeagents"
-version = "0.1.0"
+version = "0.0.1"
 description = "Proxy that blocks LLM tool calls a model makes on its own"
 requires-python = ">=3.11"
 license = "MIT"

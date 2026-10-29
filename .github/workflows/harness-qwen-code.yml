@@ -1,0 +1,50 @@
+# Runs the real Qwen Code CLI through safeagents against a scripted model (tests/harnesses).
+# Pull requests test the Qwen Code version docs/qwen-code.md was checked against;
+# pushes to main also test the latest release, to catch Qwen Code changes that break the guide.
+name: harness / qwen-code
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  qwen-code:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        qwen-code-version: ${{ fromJSON(github.event_name == 'pull_request' && '["0.25.3"]' || '["0.25.3", "latest"]') }}
+    name: qwen-code ${{ matrix.qwen-code-version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@18d369b23da25a81e9458561248e1aafff6a70fa # v10.3.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+
+      - name: Install safeagents
+        run: uv sync --locked
+
+      - name: Install Qwen Code ${{ matrix.qwen-code-version }}
+        env:
+          QWEN_CODE_VERSION: ${{ matrix.qwen-code-version }}
+        run: |
+          version="$QWEN_CODE_VERSION"
+          # npm's `latest` tag points at nightlies; take the newest stable release instead.
+          if [ "$version" = latest ]; then
+            version=$(npm view @qwen-code/qwen-code versions --json | jq -r '[.[] | select(contains("-") | not)] | last')
+          fi
+          npm install --global --no-audit --no-fund "@qwen-code/qwen-code@$version"
+          qwen --version
+
+      - name: Run Qwen Code through safeagents
+        run: uv run pytest tests/harnesses/test_qwen_code.py -v --durations=0

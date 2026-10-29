@@ -77,7 +77,8 @@ Run `opencode`, choose the proxied model and ask it to list the files in the rep
   - the `model` of an agent in `agent` config, which applies to subagents and the `compaction` and `title` agents.
 
   When they're unset, they fall back to the session's model or a small model from the same provider, which stays behind the proxy.
-- OpenCode doesn't ask the proxy for a model list. Models come from `https://models.opencode.ai` and your config.
+- OpenCode doesn't ask the proxy for a model list. Models come from `https://models.opencode.ai` and your config. `OPENCODE_DISABLE_MODELS_FETCH=1` uses the catalog bundled with OpenCode instead.
+- On startup, OpenCode also runs `npm install @opencode-ai/plugin` in its config directory, which contacts the npm registry. This isn't model traffic and doesn't go through the proxy.
 - With `anthropic`, OpenCode adds its own `anthropic-beta` headers. safeagents forwards them unchanged.
 
 ## Sources

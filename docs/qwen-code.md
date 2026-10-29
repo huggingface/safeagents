@@ -65,7 +65,13 @@ The DeepSeek, Z.ai (`glm-*`), MiMo and Mistral adapters also match on the model 
 
 ## 3. Check it
 
-Run `qwen` and ask it to list the files in the repo. The safeagents terminal should show the request and a `PASS` line for the call.
+Run one prompt headless (`-p` is deprecated; pass the prompt directly):
+
+```bash
+qwen --approval-mode yolo "List the files in this directory"
+```
+
+The safeagents terminal should show the request and a `PASS` line for the call.
 
 ## Anthropic
 
@@ -93,6 +99,7 @@ Run `qwen` and ask it to list the files in the repo. The safeagents terminal sho
   - a subagent's `model`.
 
   When unset, most of these fall back to the main model.
+- **Auto-memory sends an extra model call after each turn.** `memory.enableManagedAutoMemory` (on by default) resends the conversation to the main model with its own tools. It goes through the proxy and gets checked like the main loop, so a flagged call can show up as a second `BLOCK` line.
 - **Expect a `respond_in_schema` tool call on classifier and other JSON requests.** These side queries force that tool call, and the proxy checks it like any other.
 - **These bypass the proxy:**
   - `web_search`, which runs on DashScope's Responses API and only on recognised DashScope hosts;
