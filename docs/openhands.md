@@ -1,7 +1,7 @@
 # OpenHands
 
 **Status: supported** with `anthropic/` models (Anthropic Messages) or `openai/` models forced onto Chat Completions.
-Checked against the OpenHands Software Agent SDK v1.56.0, which pins LiteLLM 1.93.0.
+Checked against the OpenHands Software Agent SDK v1.56.0, which requires LiteLLM >=1.93.0,<1.106 (tested with 1.93.0 and 1.105.7).
 
 The OpenHands SDK calls models through LiteLLM, using the `base_url` set on its `LLM` object. Set that to safeagents.
 

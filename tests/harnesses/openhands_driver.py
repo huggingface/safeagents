@@ -29,9 +29,9 @@ import os
 os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
 os.environ.setdefault("OPENHANDS_SUPPRESS_BANNER", "1")
 
-from openhands.sdk import LLM, Agent, Conversation, Tool  # noqa: E402
-from pydantic import SecretStr  # noqa: E402
-from openhands.tools.terminal import TerminalTool  # noqa: E402
+from openhands.sdk import LLM, Agent, Conversation, Tool
+from openhands.tools.terminal import TerminalTool
+from pydantic import SecretStr
 
 # The models docs/openhands.md uses. The fake model behind the proxy ignores the name,
 # but the SDK doesn't: `gpt-4.1` is one LiteLLM lists for the Responses API, so the
