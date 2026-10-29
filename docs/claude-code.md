@@ -49,8 +49,6 @@ To make this permanent, put the variable in `~/.claude/settings.json`:
 ]
 ```
 
-From this repo, you can also start the proxy with *Tasks: Run Task* → `safeagents: log-only` (or `safeagents: block`).
-
 ## 3. Check it
 
 Ask Claude Code to list the files in the current directory. The safeagents terminal should count one request and show a `PASS` line for the `Bash` or `Glob` call.

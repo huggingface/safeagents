@@ -66,7 +66,7 @@ uv run safeagents --upstream https://api.anthropic.com --log-only
 ANTHROPIC_BASE_URL=http://127.0.0.1:8787 claude
 ```
 
-**Claude Code in VS Code:** start the proxy, either as above or from this repo with *Tasks: Run Task* → `safeagents: log-only` (or `safeagents: block`), then add this to your VS Code user settings JSON (*Preferences: Open User Settings (JSON)*) and run *Developer: Reload Window*:
+**Claude Code in VS Code:** start the proxy as above, then add this to your VS Code user settings JSON (*Preferences: Open User Settings (JSON)*) and run *Developer: Reload Window*:
 
 ```json
 "claudeCode.environmentVariables": [
@@ -147,3 +147,7 @@ atif-scan runs once per tool call, on the user turns and the last 20 agent turns
 ```
 uv run pytest
 ```
+
+## License
+
+Apache 2.0, see [LICENSE](LICENSE).
