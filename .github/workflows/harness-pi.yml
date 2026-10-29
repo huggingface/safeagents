@@ -1,0 +1,43 @@
+# Runs the real pi CLI through safeagents against a scripted model (tests/harnesses).
+# Pull requests test the pi version docs/pi.md was checked against; pushes to main
+# also test the latest release, to catch pi changes that break the guide.
+name: harness / pi
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  pi:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        pi-version: ${{ fromJSON(github.event_name == 'pull_request' && '["1.3.0"]' || '["1.3.0", "latest"]') }}
+    name: pi ${{ matrix.pi-version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@18d369b23da25a81e9458561248e1aafff6a70fa # v10.3.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+
+      - name: Install safeagents
+        run: uv sync --locked
+
+      - name: Install pi ${{ matrix.pi-version }}
+        run: |
+          npm install --global --no-audit --no-fund @earendil-works/pi-coding-agent@${{ matrix.pi-version }}
+          pi --version
+
+      - name: Run pi through safeagents
+        run: uv run pytest tests/harnesses/test_pi.py -v --durations=0
