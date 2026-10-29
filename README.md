@@ -28,6 +28,8 @@ uv run safeagents --upstream <url> [options]
 | `--block-severity` | `low`, `medium`, `high` or `critical`: findings at or above it block without asking the judge |
 | `--judge-url`, `--judge-model` | the decision model; its API key comes from `SAFEAGENTS_JUDGE_API_KEY` |
 | `--judge-fail-closed` | block suspicious calls when the judge errors or gives no verdict (default: allow and log) |
+| `--journal PATH` | where calls that weren't simply passed are kept, with their full arguments (default `~/.safeagents/calls.jsonl`) |
+| `--no-journal` | keep no record of them |
 
 The built-in host allowlist covers loopback, GitHub, PyPI, Hugging Face, npm and crates.io.
 
@@ -99,6 +101,24 @@ The proxy's terminal shows a histogram of verdicts and the latest tool calls, re
 ```
 
 `WARN` calls ran but raised an atif-scan finding; `FLAG` ones would have been blocked but ran because of `--log-only`. Piped to a file, it writes one plain line per call instead.
+
+Every call that wasn't simply passed (blocked, flagged or suspicious) is also kept in `~/.safeagents/calls.jsonl` with its full arguments, the findings, the judge's answer and the user's task. Arguments can hold secrets, so the file is readable by you only. `safeagents inspect` lists the calls and `safeagents inspect N` shows one in full:
+
+```
+$ safeagents inspect 3
+call #3, 2026-10-29 13:52:56
+verdict   suspicious
+tool      Bash
+model     fake-model
+task      The parser tests in this repo fail. Fix them and keep ruff happy.
+finding   side_channel.harness_secret_read (medium): Another process's environment read
+arguments
+{
+  "command": "cat /proc/1/environ | tr '\\0' '\\n'"
+}
+```
+
+To watch an agent without changing anything it does, run with `--log-only` and read the journal afterwards.
 
 To see it react without a real agent, run simulated sessions in which a fake model mixes ordinary calls with the misuse from the Cohere report (nothing is executed). Sixteen agents run at once by default; set how many with `--agents` and how fast they go with `--delay`:
 
