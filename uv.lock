@@ -21,11 +21,15 @@ wheels = [
 
 [[package]]
 name = "atif-scan"
-version = "0.8.14"
-source = { git = "https://github.com/huggingface/atif-scan?tag=v0.8.14#b79c6c1f2c2a4904d56d9b23168c7d813e474d97" }
+version = "0.8.15"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "huggingface-hub" },
     { name = "rich" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e3/fb/0894ffb9a40332725d57a7372f8b6455b2814b59b5313ba2dd41e3a42f4e/atif_scan-0.8.15.tar.gz", hash = "sha256:0b34910e564024ea31dcc7aeff2334afa847a6b23955d4e859cfe0a0dc437ec8", size = 1319505, upload-time = "2026-10-29T14:53:44.794Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cd/46/ab906f8f36d0b6edfcbbc6c441248760799d498472ab06584b430e8d1af0/atif_scan-0.8.15-py3-none-any.whl", hash = "sha256:3a2b25f198323a723008d59c7f870c8fbd06cc9d0f0cbbfd1efdee7dcb127ba7", size = 634392, upload-time = "2026-10-29T14:53:42.855Z" },
 ]
 
 [[package]]
@@ -362,7 +366,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "atif-scan", git = "https://github.com/huggingface/atif-scan?tag=v0.8.14" },
+    { name = "atif-scan", specifier = ">=0.8.15" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "rich", specifier = ">=13" },
     { name = "starlette", specifier = ">=0.40" },

@@ -8,13 +8,10 @@ version = "0.0.1"
 description = "Proxy that blocks LLM tool calls a model makes on its own"
 requires-python = ">=3.11"
 license = "Apache-2.0"
-dependencies = ["atif-scan", "httpx>=0.27", "rich>=13", "starlette>=0.40", "uvicorn>=0.30"]
+dependencies = ["atif-scan>=0.8.15", "httpx>=0.27", "rich>=13", "starlette>=0.40", "uvicorn>=0.30"]
 
 [project.scripts]
 safeagents = "safeagents.cli:main"
-
-[tool.uv.sources]
-atif-scan = { git = "https://github.com/huggingface/atif-scan", tag = "v0.8.14" }
 
 [dependency-groups]
 dev = ["pytest>=8"]
