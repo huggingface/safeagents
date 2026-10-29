@@ -1,3 +1,16 @@
+# Copyright 2026-present the HuggingFace Inc. team.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 """Checks that need only the request: the tools it declared and the hosts it mentions."""
 
 from __future__ import annotations
@@ -43,12 +56,13 @@ def extract_hosts(text: str) -> list[str]:
     text = text.lower()
     hosts = set()
     for authority in _AUTHORITY.findall(text):
-        host = _HOST.match(authority.rsplit("@", 1)[-1]).group()
+        host_and_port = authority.rsplit("@", 1)[-1]
+        host = _HOST.match(host_and_port).group()
         if host:
             hosts.add(host)
-    for ip in _IPV4.findall(text):
-        if all(int(part) <= 255 for part in ip.split(".")):
-            hosts.add(ip)
+    for ip_address in _IPV4.findall(text):
+        if all(int(octet) <= 255 for octet in ip_address.split(".")):
+            hosts.add(ip_address)
     return sorted(hosts)
 
 
@@ -62,19 +76,21 @@ class Policy:
         context = dict(request)
         if isinstance(context.get("messages"), list):
             context["messages"] = [
-                m for m in context["messages"] if not (isinstance(m, dict) and m.get("role") == "assistant")
+                message
+                for message in context["messages"]
+                if not (isinstance(message, dict) and message.get("role") == "assistant")
             ]
         self.context = json.dumps(context, ensure_ascii=False).lower()
-        self.allowed_hosts = [h.lower() for h in allowed_hosts]
-
-    def host_ok(self, host: str) -> bool:
-        return host in self.context or any(host == a or host.endswith("." + a) for a in self.allowed_hosts)
+        self.allowed_hosts = [host.lower() for host in allowed_hosts]
 
     def check(self, name: str, args: str) -> str | None:
         """Why a call to `name` with raw `args` should be blocked, if it should."""
         if name not in self.declared:
             return "undeclared tool"
         for host in extract_hosts(args):
-            if not self.host_ok(host):
-                return f"host `{host}` appears nowhere in the conversation"
+            if host in self.context:
+                continue
+            if any(host == allowed or host.endswith("." + allowed) for allowed in self.allowed_hosts):
+                continue
+            return f"host `{host}` appears nowhere in the conversation"
         return None

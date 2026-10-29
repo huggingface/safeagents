@@ -1,3 +1,16 @@
+# Copyright 2026-present the HuggingFace Inc. team.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 """A decision model asked about tool calls the scanner found suspicious.
 
 It sees what the user asked for, the call and the scanner's findings, but never the
@@ -46,23 +59,32 @@ def task_text(request: dict) -> str:
     """The text of user turns: no system prompt (long and generic in most harnesses),
     tool results or agent turns. Keeps the end when long, as the latest ask matters most."""
     parts = []
-    for m in request.get("messages") or []:
-        if not isinstance(m, dict) or m.get("role") != "user":
+    for message in request.get("messages") or []:
+        if not isinstance(message, dict) or message.get("role") != "user":
             continue
-        content = m.get("content")
+        content = message.get("content")
         if isinstance(content, str):
             parts.append(content)
         elif isinstance(content, list):
-            parts += [b["text"] for b in content if isinstance(b, dict) and b.get("type") == "text" and isinstance(b.get("text"), str)]
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text" and isinstance(block.get("text"), str):
+                    parts.append(block["text"])
     text = "\n\n".join(parts)
-    return text if len(text) <= MAX_TASK else "[...]\n" + text[-MAX_TASK:]
+    if len(text) > MAX_TASK:
+        text = "[...]\n" + text[-MAX_TASK:]
+    return text
 
 
-def prompt(task: str, name: str, args: str, signals: list[Signal]) -> str:
+def build_prompt(task: str, name: str, args: str, signals: list[Signal]) -> str:
+    """The user message sent to the judge for one call."""
     if len(args) > MAX_ARGS:
         args = args[:MAX_ARGS] + " [...]"
-    findings = "\n".join(f"- {s.id} ({s.severity.name.lower()}): {s.title}" for s in signals)
-    return f"<task>\n{task}\n</task>\n\n<tool_call name={json.dumps(name)}>\n{args}\n</tool_call>\n\n<scanner_findings>\n{findings}\n</scanner_findings>"
+    findings = "\n".join(f"- {signal.id} ({signal.severity.name.lower()}): {signal.title}" for signal in signals)
+    return (
+        f"<task>\n{task}\n</task>\n\n"
+        f"<tool_call name={json.dumps(name)}>\n{args}\n</tool_call>\n\n"
+        f"<scanner_findings>\n{findings}\n</scanner_findings>"
+    )
 
 
 class Judge:
@@ -88,21 +110,26 @@ class Judge:
             "model": self.model,
             "messages": [
                 {"role": "system", "content": SYSTEM},
-                {"role": "user", "content": prompt(task_text(request), name, args, signals)},
+                {"role": "user", "content": build_prompt(task_text(request), name, args, signals)},
             ],
             "temperature": 0,
             "max_tokens": 256,
-            "response_format": {"type": "json_schema", "json_schema": {"name": "verdict", "strict": True, "schema": SCHEMA}},
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {"name": "verdict", "strict": True, "schema": SCHEMA},
+            },
         }
         try:
-            resp = await self.client.post(self.url, json=body, headers=self.headers, timeout=self.timeout)
-            resp.raise_for_status()
-            content = resp.json()["choices"][0]["message"]["content"]
+            response = await self.client.post(self.url, json=body, headers=self.headers, timeout=self.timeout)
+            response.raise_for_status()
+            content = response.json()["choices"][0]["message"]["content"]
             # Tolerate code fences or stray text around the object.
-            answer = json.loads(content[content.index("{") : content.rindex("}") + 1])
+            json_text = content[content.index("{") : content.rindex("}") + 1]
+            answer = json.loads(json_text)
         except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as e:
             raise JudgeError(f"{type(e).__name__}: {e}") from e
-        verdict, reason = answer.get("verdict"), answer.get("reason")
+        verdict = answer.get("verdict")
+        reason = answer.get("reason")
         if verdict not in ("allow", "block"):
             raise JudgeError(f"unexpected verdict {verdict!r}")
         return verdict == "block", str(reason or "").strip()

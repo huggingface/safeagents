@@ -1,3 +1,16 @@
+# Copyright 2026-present the HuggingFace Inc. team.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 import asyncio
 import json
 
@@ -15,30 +28,30 @@ ENVIRON = '{"command": "cat /proc/1/environ"}'
 
 
 def ids(request: dict, args: str) -> set[str]:
-    return {s.id for s in SCANNER.signals(history(request), [("bash", args)])}
+    return {signal.id for signal in SCANNER.signals(history(request), [("bash", args)])}
 
 
 def test_findings_on_the_pending_call():
-    req = bash_request("Write a detection rule for curl downloads to /tmp.")
-    assert "side_channel.harness_secret_read" in ids(req, ENVIRON)
-    assert "network.proxy_bypass" in ids(req, '{"command": "curl --noproxy \'*\' https://example.com"}')
-    assert "safeagents.namespace_escape" in ids(req, '{"command": "unshare -Urm sh"}')
-    assert ids(req, '{"command": "ls -la && pytest -q"}') == set()
+    request = bash_request("Write a detection rule for curl downloads to /tmp.")
+    assert "side_channel.harness_secret_read" in ids(request, ENVIRON)
+    assert "network.proxy_bypass" in ids(request, '{"command": "curl --noproxy \'*\' https://example.com"}')
+    assert "safeagents.namespace_escape" in ids(request, '{"command": "unshare -Urm sh"}')
+    assert ids(request, '{"command": "ls -la && pytest -q"}') == set()
 
 
 def test_trace_quality_checks_are_ignored():
-    req = bash_request("hi")
-    req["tools"].append({"type": "function", "function": {"name": "WebFetch"}})
-    assert {s.id for s in SCANNER.signals(history(req), [("WebFetch", '{"url": "https://docs.python.org/3/"}')])} == set()
+    request = bash_request("hi")
+    request["tools"].append({"type": "function", "function": {"name": "WebFetch"}})
+    assert {signal.id for signal in SCANNER.signals(history(request), [("WebFetch", '{"url": "https://docs.python.org/3/"}')])} == set()
 
 
 def test_findings_on_earlier_turns_are_ignored():
-    req = bash_request("hi")
-    req["messages"] += [
+    request = bash_request("hi")
+    request["messages"] += [
         {"role": "assistant", "tool_calls": [{"id": "a", "type": "function", "function": {"name": "bash", "arguments": ENVIRON}}]},
         {"role": "tool", "tool_call_id": "a", "content": "PATH=/bin"},
     ]
-    assert ids(req, '{"command": "ls"}') == set()
+    assert ids(request, '{"command": "ls"}') == set()
 
 
 ANTHROPIC = {
@@ -63,18 +76,18 @@ def test_history_converts_both_formats():
          "tool_calls": [{"id": "a", "type": "function", "function": {"name": "bash", "arguments": '{"command": "ls"}'}}]},
         {"role": "tool", "tool_call_id": "a", "content": "README.md"},
     ]
-    for req in (openai, ANTHROPIC):
-        steps = history(req)
+    for request in (openai, ANTHROPIC):
+        steps = history(request)
         assert "SECRET_REASONING" not in json.dumps(steps)
-        agent = next(s for s in steps if s.get("tool_calls"))
+        agent = next(step for step in steps if step.get("tool_calls"))
         assert agent["observation"]["results"][0]["source_call_id"] == agent["tool_calls"][0]["tool_call_id"]
-        parse_trace({"schema_version": "ATIF-v1.7", "steps": [{"step_id": i + 1, **s} for i, s in enumerate([*steps, call_step([("bash", "{}")])])]})
+        parse_trace({"schema_version": "ATIF-v1.7", "steps": [{"step_id": index + 1, **step} for index, step in enumerate([*steps, call_step([("bash", "{}")])])]})
 
 
 def judge_returning(content: str | None, seen: list | None = None) -> Judge:
-    def handler(request: httpx.Request) -> httpx.Response:
+    def handler(judge_request: httpx.Request) -> httpx.Response:
         if seen is not None:
-            seen.append(json.loads(request.content))
+            seen.append(json.loads(judge_request.content))
         if content is None:
             return httpx.Response(500)
         return httpx.Response(200, json={"choices": [{"message": {"content": content}}]})
@@ -83,20 +96,20 @@ def judge_returning(content: str | None, seen: list | None = None) -> Judge:
 
 
 def review(config: Config, request: dict | None = None, args: str = ENVIRON) -> Guard:
-    g = Guard(request or bash_request("Write a detection rule for curl downloads to /tmp."), config)
-    asyncio.run(g.allow("bash", args))
-    return g
+    guard = Guard(request or bash_request("Write a detection rule for curl downloads to /tmp."), config)
+    asyncio.run(guard.allow("bash", args))
+    return guard
 
 
 def test_suspicious_call_without_judge_is_only_logged(caplog):
-    g = review(Config(scanner=SCANNER))
-    assert g.flagged == []
+    guard = review(Config(scanner=SCANNER))
+    assert guard.flagged == []
     assert "suspicious call to `bash`" in caplog.text
 
 
 def test_block_severity_threshold():
-    g = review(Config(scanner=SCANNER, block_severity=Severity.MEDIUM))
-    assert g.flagged and g.flagged[0].reason.startswith("atif-scan: side_channel.harness_secret_read")
+    guard = review(Config(scanner=SCANNER, block_severity=Severity.MEDIUM))
+    assert guard.flagged and guard.flagged[0].reason.startswith("atif-scan: side_channel.harness_secret_read")
 
 
 @pytest.mark.parametrize(
@@ -110,8 +123,8 @@ def test_block_severity_threshold():
     ],
 )
 def test_judge_verdicts(answer, fail_closed, blocked):
-    g = review(Config(scanner=SCANNER, judge=judge_returning(answer), judge_fail_closed=fail_closed))
-    assert bool(g.flagged) == blocked
+    guard = review(Config(scanner=SCANNER, judge=judge_returning(answer), judge_fail_closed=fail_closed))
+    assert bool(guard.flagged) == blocked
 
 
 def test_judge_is_only_asked_about_suspicious_calls():
@@ -123,9 +136,9 @@ def test_judge_is_only_asked_about_suspicious_calls():
 
 def test_judge_never_sees_reasoning_or_agent_text():
     seen: list = []
-    req = json.loads(json.dumps(ANTHROPIC))
-    req["tools"] = [{"name": "bash", "input_schema": {}}]
-    review(Config(scanner=SCANNER, judge=judge_returning('{"verdict": "allow", "reason": "ok"}', seen)), req)
+    request = json.loads(json.dumps(ANTHROPIC))
+    request["tools"] = [{"name": "bash", "input_schema": {}}]
+    review(Config(scanner=SCANNER, judge=judge_returning('{"verdict": "allow", "reason": "ok"}', seen)), request)
     prompt = json.dumps(seen[0]["messages"])
     assert "fix the tests" in prompt and "/proc/1/environ" in prompt
     assert "SECRET_REASONING" not in prompt and "Running them." not in prompt and "1 failed" not in prompt

@@ -1,3 +1,16 @@
+# Copyright 2026-present the HuggingFace Inc. team.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 """Applies a Guard to OpenAI and Anthropic responses, full or streamed.
 
 A blocked call is replaced by a text notice, and a "tool use" stop reason becomes a
@@ -15,14 +28,13 @@ from .guard import Guard
 TOOL_BLOCKS = ("tool_use", "server_tool_use")
 
 
-def dumps(value: object) -> str:
-    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
-
-
 def append_content(slot: dict, text: str) -> None:
     """Appends `text` to an OpenAI `message` or `delta` object's `content`."""
     current = slot.get("content")
-    slot["content"] = f"{current}\n{text}" if isinstance(current, str) and current else text
+    if isinstance(current, str) and current:
+        slot["content"] = f"{current}\n{text}"
+    else:
+        slot["content"] = text
 
 
 def swap_reason(slot: dict, key: str, old: str, new: str) -> bool:
@@ -32,48 +44,53 @@ def swap_reason(slot: dict, key: str, old: str, new: str) -> bool:
     return False
 
 
-async def guard_response(resp: dict, guard: Guard) -> bool:
+async def guard_response(response: dict, guard: Guard) -> bool:
     """Checks a full (non-streaming) response; True if it was changed."""
-    before = len(guard.flagged)
+    block = guard.config.block
+    flagged_before = len(guard.flagged)
 
     # OpenAI: choices[].message.tool_calls[]
-    for choice in resp.get("choices") or []:
-        msg = choice.get("message") if isinstance(choice, dict) else None
-        if not isinstance(msg, dict) or not isinstance(msg.get("tool_calls"), list):
+    for choice in response.get("choices") or []:
+        message = choice.get("message") if isinstance(choice, dict) else None
+        if not isinstance(message, dict) or not isinstance(message.get("tool_calls"), list):
             continue
-        seen = len(guard.flagged)
-        kept = []
-        for tc in msg["tool_calls"]:
-            f = tc.get("function") or {}
-            if await guard.allow(str(f.get("name") or ""), str(f.get("arguments") or "")):
-                kept.append(tc)
-        found = guard.flagged[seen:]
-        if not guard.block or not found:
+        flagged_before_choice = len(guard.flagged)
+        kept_calls = []
+        for tool_call in message["tool_calls"]:
+            function = tool_call.get("function") or {}
+            name = str(function.get("name") or "")
+            args = str(function.get("arguments") or "")
+            if await guard.allow(name, args):
+                kept_calls.append(tool_call)
+        newly_flagged = guard.flagged[flagged_before_choice:]
+        if not block or not newly_flagged:
             continue
-        if kept:
-            msg["tool_calls"] = kept
+        if kept_calls:
+            message["tool_calls"] = kept_calls
         else:
-            del msg["tool_calls"]
+            del message["tool_calls"]
             swap_reason(choice, "finish_reason", "tool_calls", "stop")
-        for b in found:
-            append_content(msg, b.notice())
+        for blocked in newly_flagged:
+            append_content(message, blocked.notice())
 
     # Anthropic: content[] tool_use blocks
-    content = resp.get("content")
+    content = response.get("content")
     if isinstance(content, list):
-        seen = len(guard.flagged)
+        flagged_before_content = len(guard.flagged)
         kept_tool = False
-        for i, b in enumerate(content):
-            if not (isinstance(b, dict) and b.get("type") in TOOL_BLOCKS):
+        for index, content_block in enumerate(content):
+            if not (isinstance(content_block, dict) and content_block.get("type") in TOOL_BLOCKS):
                 continue
-            if await guard.allow(str(b.get("name") or ""), dumps(b.get("input"))):
+            name = str(content_block.get("name") or "")
+            args = json.dumps(content_block.get("input"), ensure_ascii=False, separators=(",", ":"))
+            if await guard.allow(name, args):
                 kept_tool = True
-            elif guard.block:
-                content[i] = {"type": "text", "text": guard.flagged[-1].notice()}
-        if guard.block and len(guard.flagged) > seen and not kept_tool:
-            swap_reason(resp, "stop_reason", "tool_use", "end_turn")
+            elif block:
+                content[index] = {"type": "text", "text": guard.flagged[-1].notice()}
+        if block and len(guard.flagged) > flagged_before_content and not kept_tool:
+            swap_reason(response, "stop_reason", "tool_use", "end_turn")
 
-    return guard.block and len(guard.flagged) > before
+    return block and len(guard.flagged) > flagged_before
 
 
 @dataclass
@@ -116,117 +133,144 @@ class StreamGuard:
     kept_tool: bool = False
 
     async def _allow(self, name: str, args: str) -> bool:
-        ok = await self.guard.allow(name, args)
-        self.kept_tool |= ok
-        return ok
+        allowed = await self.guard.allow(name, args)
+        self.kept_tool |= allowed
+        return allowed
 
-    def _swap_reason(self) -> bool:
-        return self.guard.block and bool(self.guard.flagged) and not self.kept_tool
-
-    async def event(self, ev: object, raw: bytes) -> Out:
-        if not isinstance(ev, dict):
+    async def event(self, event: object, raw: bytes) -> Out:
+        if not isinstance(event, dict):
             return None
-        kind = ev.get("type")
-        holding = self.held is not None and self.held.index == ev.get("index")
-        if kind == "content_block_start" and (ev.get("content_block") or {}).get("type") in TOOL_BLOCKS:
-            block = ev["content_block"]
-            start = block.get("input")
-            self.held = _HeldBlock(ev.get("index"), str(block.get("name") or ""), dumps(start) if start else "", [raw])
+        kind = event.get("type")
+        holding = self.held is not None and self.held.index == event.get("index")
+        content_block = event.get("content_block") or {}
+        if kind == "content_block_start" and content_block.get("type") in TOOL_BLOCKS:
+            name = str(content_block.get("name") or "")
+            start_input = content_block.get("input")
+            input_text = ""
+            if start_input:
+                input_text = json.dumps(start_input, ensure_ascii=False, separators=(",", ":"))
+            self.held = _HeldBlock(event.get("index"), name, input_text, [raw])
             return []
         if kind == "content_block_delta" and holding:
-            part = (ev.get("delta") or {}).get("partial_json")
-            if isinstance(part, str):
-                self.held.input += part
+            partial_json = (event.get("delta") or {}).get("partial_json")
+            if isinstance(partial_json, str):
+                self.held.input += partial_json
             self.held.raw.append(raw)
             return []
         if kind == "content_block_stop" and holding:
-            held, self.held = self.held, None
+            held = self.held
+            self.held = None
             held.raw.append(raw)
             return await self._release_block(held)
         if kind == "message_delta":
-            delta = ev.get("delta")
-            if self._swap_reason() and isinstance(delta, dict) and swap_reason(delta, "stop_reason", "tool_use", "end_turn"):
-                return [ev]
+            delta = event.get("delta")
+            # The stop reason only changes when every call so far was blocked.
+            should_swap_reason = self.guard.config.block and self.guard.flagged and not self.kept_tool
+            if (
+                should_swap_reason
+                and isinstance(delta, dict)
+                and swap_reason(delta, "stop_reason", "tool_use", "end_turn")
+            ):
+                return [event]
             return None
-        if isinstance(ev.get("choices"), list):
-            return await self._openai_chunk(ev)
+        if isinstance(event.get("choices"), list):
+            return await self._openai_chunk(event)
         return None
 
     async def _release_block(self, held: _HeldBlock) -> list[bytes | dict]:
         if await self._allow(held.name, held.input):
             return list(held.raw)
         # Keep the block index so the stream's block numbering stays intact.
-        text = {"type": "text", "text": self.guard.flagged[-1].notice()}
+        text_block = {"type": "text", "text": self.guard.flagged[-1].notice()}
         return [
-            {"type": "content_block_start", "index": held.index, "content_block": text},
+            {"type": "content_block_start", "index": held.index, "content_block": text_block},
             {"type": "content_block_stop", "index": held.index},
         ]
 
-    async def _openai_chunk(self, ev: dict) -> Out:
+    async def _openai_chunk(self, event: dict) -> Out:
         changed = False
-        finished = []
-        for choice in ev["choices"]:
+        finished_choices = []
+        for choice in event["choices"]:
             if not isinstance(choice, dict):
                 continue
-            ci = choice.get("index") or 0
+            choice_index = choice.get("index") or 0
             delta = choice.get("delta")
             if isinstance(delta, dict) and "tool_calls" in delta:
                 changed = True
-                for tc in delta.pop("tool_calls") or []:
-                    self._absorb(ci, tc)
+                for tool_call in delta.pop("tool_calls") or []:
+                    self._absorb(choice_index, tool_call)
             if isinstance(choice.get("finish_reason"), str):
-                finished.append(ci)
-        self.template = ev
-        if not finished:
-            return [ev] if changed else None
+                finished_choices.append(choice_index)
+        self.template = event
+        if not finished_choices:
+            return [event] if changed else None
 
-        out: list[bytes | dict] = [c for ci in finished if (c := await self._release_calls(ci))]
-        if self._swap_reason():
-            for choice in ev["choices"]:
+        out: list[bytes | dict] = []
+        for choice_index in finished_choices:
+            chunk = await self._release_calls(choice_index)
+            if chunk:
+                out.append(chunk)
+        # The stop reason only changes when every call so far was blocked.
+        if self.guard.config.block and self.guard.flagged and not self.kept_tool:
+            for choice in event["choices"]:
                 swap_reason(choice, "finish_reason", "tool_calls", "stop")
-        return [*out, ev]
+        out.append(event)
+        return out
 
-    def _absorb(self, choice: int, tc: dict) -> None:
-        call = self.pending.setdefault((choice, tc.get("index") or 0), _PendingCall())
-        if isinstance(tc.get("id"), str):
-            call.id = tc["id"]
-        f = tc.get("function") or {}
-        if isinstance(f.get("name"), str):
-            call.name += f["name"]
-        if isinstance(f.get("arguments"), str):
-            call.args += f["arguments"]
+    def _absorb(self, choice_index: int, tool_call: dict) -> None:
+        key = (choice_index, tool_call.get("index") or 0)
+        call = self.pending.setdefault(key, _PendingCall())
+        if isinstance(tool_call.get("id"), str):
+            call.id = tool_call["id"]
+        function = tool_call.get("function") or {}
+        if isinstance(function.get("name"), str):
+            call.name += function["name"]
+        if isinstance(function.get("arguments"), str):
+            call.args += function["arguments"]
 
-    async def _release_calls(self, choice: int) -> dict | None:
-        """One chunk carrying the complete, allowed tool calls of `choice`."""
-        calls = [self.pending.pop(k) for k in list(self.pending) if k[0] == choice]
+    async def _release_calls(self, choice_index: int) -> dict | None:
+        """One chunk carrying the complete, allowed tool calls of `choice_index`."""
+        calls = []
+        for key in list(self.pending):
+            if key[0] == choice_index:
+                calls.append(self.pending.pop(key))
         if not calls:
             return None
-        kept, notices = [], []
+        kept_calls = []
+        notices = []
         for call in calls:
             if await self._allow(call.name, call.args):
-                kept.append(call)
+                kept_calls.append(call)
             else:
                 notices.append(self.guard.flagged[-1].notice())
         delta: dict = {}
-        if kept:
+        if kept_calls:
             delta["tool_calls"] = [
-                {"index": i, "id": c.id, "type": "function", "function": {"name": c.name, "arguments": c.args}}
-                for i, c in enumerate(kept)
+                {
+                    "index": index,
+                    "id": call.id,
+                    "type": "function",
+                    "function": {"name": call.name, "arguments": call.args},
+                }
+                for index, call in enumerate(kept_calls)
             ]
         if notices:
             append_content(delta, "\n".join(notices))
-        chunk = {k: v for k, v in self.template.items() if k != "usage"}
-        chunk["choices"] = [{"index": choice, "delta": delta, "finish_reason": None}]
+        chunk = {key: value for key, value in self.template.items() if key != "usage"}
+        chunk["choices"] = [{"index": choice_index, "delta": delta, "finish_reason": None}]
         return chunk
 
     async def flush(self) -> list[bytes | dict]:
         """Releases anything still held, e.g. when the stream ends early."""
         out = []
         if self.held is not None:
-            held, self.held = self.held, None
+            held = self.held
+            self.held = None
             out += await self._release_block(held)
-        for ci in dict.fromkeys(k[0] for k in self.pending):
-            if chunk := await self._release_calls(ci):
+        pending_choices = dict.fromkeys(choice_index for choice_index, _ in self.pending)
+        for choice_index in pending_choices:
+            chunk = await self._release_calls(choice_index)
+            if chunk:
                 out.append(chunk)
         return out
 
@@ -243,7 +287,8 @@ def _encode(items: list[bytes | dict]) -> bytes:
         # Anthropic streams name each event after its `type`.
         if isinstance(item.get("type"), str):
             out += f"event: {item['type']}\n".encode()
-        out += f"data: {dumps(item)}\n\n".encode()
+        data = json.dumps(item, ensure_ascii=False, separators=(",", ":"))
+        out += f"data: {data}\n\n".encode()
     return bytes(out)
 
 
@@ -253,32 +298,41 @@ class SseRewriter:
 
     def __init__(self, guard: Guard) -> None:
         self.stream = StreamGuard(guard)
-        self.buf = b""
+        self.buffer = b""
 
     async def feed(self, chunk: bytes) -> bytes:
         """Feeds a chunk and returns the bytes to send downstream."""
-        self.buf += chunk
+        self.buffer += chunk
         out = bytearray()
-        while m := _BOUNDARY.search(self.buf):
-            raw, self.buf = self.buf[: m.end()], self.buf[m.end() :]
-            out += await self._rewrite(raw[: m.start()], raw)
+        while boundary := _BOUNDARY.search(self.buffer):
+            raw = self.buffer[: boundary.end()]
+            self.buffer = self.buffer[boundary.end() :]
+            out += await self._rewrite(raw[: boundary.start()], raw)
         return bytes(out)
 
     async def finish(self) -> bytes:
         """Flushes a trailing unterminated event and anything still held."""
-        rest, self.buf = self.buf, b""
-        out = await self._rewrite(rest, rest + b"\n\n") if rest else b""
+        rest = self.buffer
+        self.buffer = b""
+        out = b""
+        if rest:
+            out = await self._rewrite(rest, rest + b"\n\n")
         return out + _encode(await self.stream.flush())
 
     async def _rewrite(self, body: bytes, raw: bytes) -> bytes:
-        lines = body.decode("utf-8", "replace").splitlines()
-        data = next((line[5:].lstrip() for line in lines if line.startswith("data:")), None)
+        data = None
+        for line in body.decode("utf-8", "replace").splitlines():
+            if line.startswith("data:"):
+                data = line[5:].lstrip()
+                break
         if data is None:
             return raw
         try:
-            ev = json.loads(data)
+            event = json.loads(data)
         except ValueError:
             # Non-JSON data such as `[DONE]`: release held calls before it.
             return _encode(await self.stream.flush()) + raw
-        out = await self.stream.event(ev, raw)
-        return raw if out is None else _encode(out)
+        out = await self.stream.event(event, raw)
+        if out is None:
+            return raw
+        return _encode(out)

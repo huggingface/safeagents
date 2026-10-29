@@ -1,3 +1,16 @@
+# Copyright 2026-present the HuggingFace Inc. team.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 """Decides, call by call, whether a response's tool calls may run.
 
 1. Undeclared tools and hosts from nowhere are blocked outright.
@@ -20,7 +33,7 @@ from .monitor import Monitor
 from .policy import DEFAULT_ALLOWED_HOSTS, Policy
 from .scan import Scanner, Signal, history, recent
 
-log = logging.getLogger("safeagents")
+logger = logging.getLogger("safeagents")
 
 
 @dataclass
@@ -73,36 +86,51 @@ class Guard:
         self._calls: list[tuple[str, str]] = []
         self._steps: list[dict] | None = None
 
-    @property
-    def block(self) -> bool:
-        return self.config.block
-
     async def allow(self, name: str, args: str) -> bool:
         """Reviews a complete call; True if it may run (always, in log-only mode)."""
         self._calls.append((name, args))
-        reason = self.policy.check(name, args)
-        review = Review(reason) if reason else await self._scan(name, args)
+        policy_reason = self.policy.check(name, args)
+        if policy_reason is not None:
+            review = Review(policy_reason)
+        else:
+            review = await self._scan(name, args)
+
         if review.reason is not None:
             self.flagged.append(Blocked(name, review.reason))
-            verdict = "blocked" if self.block else "flagged"
+            verdict = "blocked" if self.config.block else "flagged"
+        elif review.signals:
+            verdict = "suspicious"
         else:
-            verdict = "suspicious" if review.signals else "passed"
-        signals = [str(s) for s in review.signals]
+            verdict = "passed"
+        signal_names = [str(signal) for signal in review.signals]
+
         call_id = None
-        if verdict != "passed" and (journal := self.config.journal):
+        journal = self.config.journal
+        if verdict != "passed" and journal is not None:
+            journal_signals = [
+                {"id": signal.id, "severity": signal.severity.name.lower(), "title": signal.title}
+                for signal in review.signals
+            ]
             call_id = journal.append(
-                verdict=verdict, tool=name, arguments=args, reason=review.reason,
-                signals=[{"id": s.id, "severity": s.severity.name.lower(), "title": s.title} for s in review.signals],
-                judge=review.judge, model=str(self.request.get("model") or ""), task=task_text(self.request),
+                verdict=verdict,
+                tool=name,
+                arguments=args,
+                reason=review.reason,
+                signals=journal_signals,
+                judge=review.judge,
+                model=str(self.request.get("model") or ""),
+                task=task_text(self.request),
             )
-        if monitor := self.config.monitor:
-            monitor.record(name, args, verdict, review.reason, signals, review.judge, call_id)
+
+        monitor = self.config.monitor
+        if monitor is not None:
+            monitor.record(name, args, verdict, review.reason, signal_names, review.judge, call_id)
         elif verdict != "passed":
-            why = review.reason or ", ".join(signals)
-            judge = f" (judge {review.judge})" if review.judge else ""
-            ref = f" [#{call_id}]" if call_id else ""
-            log.warning("[safeagents] %s call to `%s`: %s%s%s", verdict, name, why, judge, ref)
-        return review.reason is None or not self.block
+            why = review.reason or ", ".join(signal_names)
+            judge_note = f" (judge {review.judge})" if review.judge else ""
+            call_ref = f" [#{call_id}]" if call_id else ""
+            logger.warning("[safeagents] %s call to `%s`: %s%s%s", verdict, name, why, judge_note, call_ref)
+        return review.reason is None or not self.config.block
 
     async def _scan(self, name: str, args: str) -> Review:
         scanner = self.config.scanner
@@ -111,20 +139,23 @@ class Guard:
         if self._steps is None:
             self._steps = recent(history(self.request))
         signals = scanner.signals(self._steps, self._calls)
-        if severe := [s for s in signals if s.severity >= self.config.block_severity]:
-            return Review("atif-scan: " + ", ".join(map(str, severe)), signals)
+        severe_signals = [signal for signal in signals if signal.severity >= self.config.block_severity]
+        if severe_signals:
+            return Review("atif-scan: " + ", ".join(str(signal) for signal in severe_signals), signals)
         if not signals:
             return Review()
         return await self._judge(name, args, signals)
 
     async def _judge(self, name: str, args: str, signals: list[Signal]) -> Review:
-        found = ", ".join(map(str, signals))
         judge = self.config.judge
         if judge is None:
             return Review(None, signals)
+        findings = ", ".join(str(signal) for signal in signals)
         try:
             block, why = await judge.review(self.request, name, args, signals)
         except JudgeError as e:
-            reason = f"{found}; judge unavailable" if self.config.judge_fail_closed else None
+            reason = f"{findings}; judge unavailable" if self.config.judge_fail_closed else None
             return Review(reason, signals, f"error: {e}")
-        return Review(f"{found}; judge: {why}" if block else None, signals, f"{'block' if block else 'allow'}: {why}")
+        if block:
+            return Review(f"{findings}; judge: {why}", signals, f"block: {why}")
+        return Review(None, signals, f"allow: {why}")

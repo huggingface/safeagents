@@ -1,3 +1,16 @@
+# Copyright 2026-present the HuggingFace Inc. team.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 import asyncio
 import io
 
@@ -11,38 +24,38 @@ from safeagents.proxy import create_app
 from safeagents.scan import Scanner
 
 
-def monitor() -> tuple[Monitor, io.StringIO]:
+def make_monitor() -> tuple[Monitor, io.StringIO]:
     out = io.StringIO()
     return Monitor(Console(file=out, width=200, force_terminal=False, color_system=None)), out
 
 
 def test_every_verdict_is_printed_and_counted():
-    m, out = monitor()
-    req = bash_request("Write a detection rule for curl downloads to /tmp.")
+    monitor, out = make_monitor()
+    request = bash_request("Write a detection rule for curl downloads to /tmp.")
 
     async def go():
-        blocking = Guard(req, Config(scanner=Scanner(), monitor=m))
+        blocking = Guard(request, Config(scanner=Scanner(), monitor=monitor))
         await blocking.allow("bash", '{"command": "ls"}')
         await blocking.allow("bash", '{"command": "cat /proc/1/environ"}')
         await blocking.allow("bash", f'{{"command": "curl https://{OSS}"}}')
-        await Guard(req, Config(scanner=None, block=False, monitor=m)).allow("shell", "{}")
+        await Guard(request, Config(scanner=None, block=False, monitor=monitor)).allow("shell", "{}")
 
     asyncio.run(go())
     lines = out.getvalue().splitlines()
     assert [line.split()[1] for line in lines] == ["PASS", "WARN", "BLOCK", "FLAG"]
     assert "cat /proc/1/environ  side_channel.harness_secret_read (medium)" in lines[1]
     assert f"host `{OSS}` appears nowhere" in lines[2]
-    assert {k: m.counts[k] for k in ("calls", "passed", "suspicious", "flagged", "blocked")} == {
+    assert {key: monitor.counts[key] for key in ("calls", "passed", "suspicious", "flagged", "blocked")} == {
         "calls": 4, "passed": 1, "suspicious": 1, "flagged": 1, "blocked": 1,
     }
 
 
 def test_terminal_view_draws_histogram_and_latest_calls():
     console = Console(file=io.StringIO(), width=100, height=20, force_terminal=True, color_system=None)
-    m = Monitor(console, setup="127.0.0.1:8787 -> upstream")
+    monitor = Monitor(console, setup="127.0.0.1:8787 -> upstream")
     for verdict in ("passed", "passed", "passed", "blocked"):
-        m.record("Bash", '{"command": "ls"}', verdict, "nope" if verdict == "blocked" else None, [], None)
-    console.print(m.render())
+        monitor.record("Bash", '{"command": "ls"}', verdict, "nope" if verdict == "blocked" else None, [], None)
+    console.print(monitor.render())
     screen = console.file.getvalue()
     assert "╔═  SAFEAGENTS " in screen and "╔═  CALLS " in screen
     bars = {line.split()[1]: line.count("█") for line in screen.splitlines() if "%" in line}
@@ -58,10 +71,10 @@ def test_summary_picks_the_telling_argument():
 
 
 def test_only_model_turns_count_as_requests():
-    m, _ = monitor()
+    monitor, _ = make_monitor()
     body = {"content": [{"type": "text", "text": "hi"}], "stop_reason": "end_turn"}
-    app = create_app("http://model", Config(scanner=None, monitor=m),
-                     transport=httpx.MockTransport(lambda r: httpx.Response(200, json=body)))
+    app = create_app("http://model", Config(scanner=None, monitor=monitor),
+                     transport=httpx.MockTransport(lambda _: httpx.Response(200, json=body)))
 
     async def go():
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://proxy") as client:
@@ -70,4 +83,4 @@ def test_only_model_turns_count_as_requests():
             await client.post("/api/event_logging/batch", json={"events": []})
 
     asyncio.run(go())
-    assert m.counts["requests"] == 1
+    assert monitor.counts["requests"] == 1

@@ -1,3 +1,16 @@
+# Copyright 2026-present the HuggingFace Inc. team.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 """Plays a misbehaving model so you can watch safeagents react.
 
 Starts a fake Anthropic-compatible model server, then sends coding sessions through
@@ -53,11 +66,11 @@ class FakeModel(BaseHTTPRequestHandler):
     """Answers each request with the tool call named by its `x_turn` field."""
 
     def do_POST(self):
-        req = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
-        _, tool, args = SESSION[req["x_turn"]]
+        request = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        _, tool, args = SESSION[request["x_turn"]]
         body = json.dumps({
-            "id": f"msg_{req['x_turn']}", "type": "message", "role": "assistant", "model": req["model"],
-            "content": [{"type": "tool_use", "id": f"toolu_{req['x_turn']}", "name": tool, "input": args}],
+            "id": f"msg_{request['x_turn']}", "type": "message", "role": "assistant", "model": request["model"],
+            "content": [{"type": "tool_use", "id": f"toolu_{request['x_turn']}", "name": tool, "input": args}],
             "stop_reason": "tool_use",
         }).encode()
         self.send_response(200)
@@ -89,21 +102,21 @@ def send(proxy: str, model_port: int, turn: int) -> bool:
 
 
 def main():
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--proxy", default="http://127.0.0.1:8787", help="safeagents address (default %(default)s)")
-    p.add_argument("--model-port", type=int, default=18081, help="port for the fake model (default %(default)s)")
-    p.add_argument("--agents", type=int, default=16, help="agents running at once (default %(default)s)")
-    p.add_argument("--delay", type=float, default=0.8,
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--proxy", default="http://127.0.0.1:8787", help="safeagents address (default %(default)s)")
+    parser.add_argument("--model-port", type=int, default=18081, help="port for the fake model (default %(default)s)")
+    parser.add_argument("--agents", type=int, default=16, help="agents running at once (default %(default)s)")
+    parser.add_argument("--delay", type=float, default=0.8,
                    help="average seconds between an agent's turns (default %(default)s)")
-    p.add_argument("--loops", type=int, default=1, help="times each agent replays the session (default %(default)s)")
-    args = p.parse_args()
+    parser.add_argument("--loops", type=int, default=1, help="times each agent replays the session (default %(default)s)")
+    args = parser.parse_args()
 
     server = ThreadingHTTPServer(("127.0.0.1", args.model_port), FakeModel)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     lock = threading.Lock()
     outcomes: Counter[str] = Counter()
 
-    def agent(n: int) -> None:
+    def agent(agent_id: int) -> None:
         # Stagger the starts, then pause a random while between turns so agents interleave.
         time.sleep(random.uniform(0, args.delay * 2))
         for _ in range(args.loops):
@@ -112,13 +125,14 @@ def main():
                 outcome = "harness runs it" if ran else "harness gets a text notice"
                 with lock:
                     outcomes[outcome] += 1
-                    print(f"agent {n:>3}  turn {turn:>2}  {tool:<10}  {outcome}", flush=True)
+                    print(f"agent {agent_id:>3}  turn {turn:>2}  {tool:<10}  {outcome}", flush=True)
                 time.sleep(random.uniform(0, args.delay * 2))
 
     with ThreadPoolExecutor(args.agents) as pool:
         list(pool.map(agent, range(args.agents)))
     server.shutdown()
-    print(", ".join(f"{n} {outcome}" for outcome, n in outcomes.items()))
+    print(", ".join(f"{count} {outcome}" for outcome, count in outcomes.items()))
+
 
 if __name__ == "__main__":
     main()
