@@ -55,7 +55,13 @@ Start safeagents with the matching upstream (`https://api.anthropic.com` or `htt
 
 ## 3. Check it
 
-Open a session in `dsh web` and ask it to list the files in the workspace. The safeagents terminal should show the request and a `PASS` line for the call.
+Run one task without the web UI:
+
+```bash
+dsh headless "List the files in this directory"
+```
+
+The safeagents terminal should show the request and a `PASS` line for the call. The same works from a session in `dsh web`.
 
 ## Notes
 
@@ -65,6 +71,7 @@ Open a session in `dsh web` and ask it to list the files in the workspace. The s
 - **The `web_search` tool has its own endpoint** (`DEEPSEEK_SEARCH_BASE_URL`), so it doesn't go through the proxy. It runs server-side and returns no client tool calls, so there is nothing there for safeagents to check.
 - dsh adds non-standard fields to its requests (`dsh_session_log`, `dsh_plugin_packages`, mid-conversation system messages). safeagents forwards them unchanged. It also includes them in the context it searches for hosts the conversation mentions.
 - dsh requests are always streamed and refuse redirects. safeagents doesn't redirect, so this needs nothing from you.
+- dsh sends telemetry to its own collector, by default only when you submit feedback. `DSH_TELEMETRY_DISABLED=1` turns it off.
 
 ## Sources
 

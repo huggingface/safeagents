@@ -107,6 +107,8 @@ def test_anthropic_stream_unseen_host_split_across_deltas_is_blocked(plain):
     assert "input_json_delta" not in out
     assert '"stop_reason":"end_turn"' in out
     assert out.count("content_block_stop") == 4  # 2 x (event line + data)
+    # The notice arrives as a text delta, the only text some clients read.
+    assert '"type":"text_delta","text":"[safeagents] blocked call to `bash`' in out
 
 
 def test_anthropic_stream_clean_call_is_released_intact(plain):

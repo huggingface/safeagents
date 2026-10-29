@@ -180,10 +180,13 @@ class StreamGuard:
     async def _release_block(self, held: _HeldBlock) -> list[bytes | dict]:
         if await self._allow(held.name, held.input):
             return list(held.raw)
-        # Keep the block index so the stream's block numbering stays intact.
-        text_block = {"type": "text", "text": self.guard.flagged[-1].notice()}
+        # Keep the block index so the stream's block numbering stays intact. The notice
+        # goes in a delta: clients such as Claude Code build text only from deltas.
+        text_block = {"type": "text", "text": ""}
+        text_delta = {"type": "text_delta", "text": self.guard.flagged[-1].notice()}
         return [
             {"type": "content_block_start", "index": held.index, "content_block": text_block},
+            {"type": "content_block_delta", "index": held.index, "delta": text_delta},
             {"type": "content_block_stop", "index": held.index},
         ]
 

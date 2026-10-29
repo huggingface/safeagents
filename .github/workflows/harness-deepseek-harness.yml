@@ -1,0 +1,44 @@
+# Runs the real DeepSeek Harness (dsh) CLI through safeagents against a scripted model
+# (tests/harnesses). Pull requests test the dsh version docs/deepseek-harness.md was
+# checked against; pushes to main also test the latest release, to catch dsh changes
+# that break the guide.
+name: harness / deepseek-harness
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  deepseek-harness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        dsh-version: ${{ fromJSON(github.event_name == 'pull_request' && '["0.2.1-rc.2"]' || '["0.2.1-rc.2", "latest"]') }}
+    name: dsh ${{ matrix.dsh-version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@18d369b23da25a81e9458561248e1aafff6a70fa # v10.3.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+
+      - name: Install safeagents
+        run: uv sync --locked
+
+      - name: Install dsh ${{ matrix.dsh-version }}
+        run: |
+          npm install --global --no-audit --no-fund @deepseek-ai/dsh@${{ matrix.dsh-version }}
+          dsh --version
+
+      - name: Run dsh through safeagents
+        run: uv run pytest tests/harnesses/test_deepseek_harness.py -v --durations=0
