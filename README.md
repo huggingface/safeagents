@@ -4,7 +4,7 @@ A lightweight local proxy between your agent and its model server. It checks eve
 
 Each tool call goes through three stages:
 
-1. **Request-only checks.** A call is blocked if it uses a tool the request never declared, or if its arguments contain a host (URL or bare IP) that appears nowhere in the conversation: not in the system prompt, the user messages, the tool results or the tool definitions. The model's own earlier turns don't count. This catches a model "calling home" to a URL it produced from its weights, as in [Cohere's Qwen3.8 report](https://cohere.com/blog/concerning-behaviour-popular-open-weight-ai-model).
+1. **Request-only checks.** A call is blocked if it uses a tool the request never declared, or if its arguments contain a host (URL or bare IP) that appears nowhere in the conversation: not in the system prompt, the user messages, the tool results or the tool definitions. The model's own earlier turns don't count.
 2. **[atif-scan](https://github.com/huggingface/atif-scan) checks.** The conversation becomes an ATIF trace and the pending call its last step, so atif-scan's detectors run on it. Examples: reading `/proc/1/environ`, `curl --noproxy`, a Kubernetes service-account token, or `unshare`/`nsenter` (a check safeagents adds). Findings at or above `--block-severity` (default `high`) are blocked. Milder ones make the call suspicious.
 3. **Decision model** (optional). Suspicious calls go to a judge model, which answers `allow` or `block` as constrained JSON. Without a judge, suspicious calls are only logged.
 
@@ -12,7 +12,7 @@ The judge only sees what the user wrote, the tool call and the findings. It neve
 
 ## Install
 
-Needs [atif-scan](https://github.com/huggingface/atif-scan).
+This repository is mainly based on [atif-scan](https://github.com/huggingface/atif-scan)
 
 ```
 uv sync
@@ -31,54 +31,11 @@ uv run safeagents --upstream <url> [options]
 | `--journal PATH` | where calls that weren't simply passed are kept, with their full arguments (default `~/.safeagents/calls.jsonl`) |
 | `--no-journal` | keep no record of them |
 
-The built-in host allowlist covers loopback, GitHub, PyPI, Hugging Face, npm and crates.io.
+The built-in host allowlist covers loopback, GitHub, PyPI, Hugging Face, npm and crates.io. We can extend this list in the future.
 
 ## Usage
 
-Step-by-step guides for 12 coding agents (OpenClaw, OpenCode, Cline, Hermes, pi, OpenHands, Qwen Code, Copilot and more) are in [docs/](docs/README.md).
-
-**llama.cpp** (or any OpenAI-compatible server):
-
-```
-llama-server -m model.gguf --jinja --port 8080
-uv run safeagents --upstream http://localhost:8080
-OPENAI_BASE_URL=http://127.0.0.1:8787/v1 your-agent
-```
-
-**With a judge** (any OpenAI-compatible server, ideally a different model from the agent's):
-
-```
-llama-server -hf <judge-model-gguf> --jinja --port 8081
-uv run safeagents --upstream http://localhost:8080 --judge-url http://localhost:8081/v1
-```
-
-**Claude Code via OpenRouter** (Anthropic-compatible endpoint):
-
-```
-uv run safeagents --upstream https://openrouter.ai/api
-ANTHROPIC_BASE_URL=http://127.0.0.1:8787 ANTHROPIC_AUTH_TOKEN=$OPENROUTER_API_KEY claude
-```
-
-**Claude Code with the Anthropic API** (terminal):
-
-```
-uv run safeagents --upstream https://api.anthropic.com --log-only
-ANTHROPIC_BASE_URL=http://127.0.0.1:8787 claude
-```
-
-**Claude Code in VS Code:** start the proxy as above, then add this to your VS Code user settings JSON (*Preferences: Open User Settings (JSON)*) and run *Developer: Reload Window*:
-
-```json
-"claudeCode.environmentVariables": [
-  { "name": "ANTHROPIC_BASE_URL", "value": "http://127.0.0.1:8787" }
-]
-```
-
-Every Claude Code request now goes through the proxy, so keep it running: if it stops, Claude Code can't reach the model. Remove the setting and reload to go back.
-
-All request headers, `anthropic-beta` included, are forwarded unchanged, so both an API key and a claude.ai subscription login keep working. With a custom base URL, Claude Code turns off Remote Control, and its WebFetch domain check still goes straight to `api.anthropic.com`.
-
-Start with `--log-only`. Claude Code declares all its tools on every request, so the undeclared-tool check shouldn't fire, but the host check will flag WebFetch calls to docs Claude knows without being told, such as `docs.rs`. URLs from search results, files Claude read, CLAUDE.md or your own messages pass. Watch the `flagged` lines for a while, add the hosts you trust with `--allow-host`, then drop `--log-only` to start blocking.
+Step-by-step guides for 12 coding agents (OpenClaw, OpenCode, Cline, Hermes, pi, OpenHands, Qwen Code, Copilot and more) are in [docs/](docs/README.md). More harnesses can be supported but not documented (yet). You can also browse the existing opensource harnesses from the community from [here](https://huggingface.co/spaces/ybelkada/harness-lens).
 
 The proxy's terminal shows a histogram of verdicts and the latest tool calls, redrawn as calls come in:
 
