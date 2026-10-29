@@ -1,6 +1,6 @@
 # safeagents
 
-![safeagents demo](assets/demo.gif)
+[![safeagents demo](assets/safeagents.gif)](assets/safeagents.mp4)
 
 A small local proxy between your agent and its model server. It checks every tool call the model makes before the harness sees it, and replaces the calls it blocks with a text notice. The harness then sees a plain text reply and runs nothing. Works with Pi, Claude Code, Hermes and with OpenAI Chat Completions and Anthropic Messages, streaming or not, so it fits any harness that lets you set a base URL.
 

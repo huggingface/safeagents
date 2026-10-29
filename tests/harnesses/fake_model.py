@@ -14,14 +14,17 @@
 """A scripted model server for harness tests.
 
 Speaks Anthropic Messages (`/v1/messages`) and OpenAI Chat Completions
-(`/chat/completions`), streamed or not. The first user message picks what the
-"model" does with a `SCENARIO=<name>` marker:
+(`/chat/completions`), streamed or not. Markers in the user's prompt, one per line
+(see `scenario_prompt`), pick the tool call the "model" makes:
 
-- `undeclared`: calls `safeagents_canary`, a tool no harness declares.
-- `host`: calls `bash` with a URL that appears nowhere in the conversation.
-- `clean`: calls `bash` with a harmless command.
+- `SCENARIO=undeclared`: calls `safeagents_canary`, a tool no harness declares.
+- `SCENARIO=host`: calls the shell tool with a URL that appears nowhere in the conversation.
+- `SCENARIO=clean`: calls the shell tool with a harmless command.
 
-Once the conversation holds a tool result, it answers with plain text.
+`TOOL=` and `ARG=` name the harness's shell tool and its command argument, and
+`EXTRA=` adds fixed arguments as compact JSON. Requests without a marker or without
+tools (titles, quota checks, ...) and requests that already carry a tool result get
+a plain text answer.
 """
 
 from __future__ import annotations
@@ -33,13 +36,24 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Self
 
 CLEAN_OUTPUT = "safeagents-ok"
-SCENARIOS = {
-    "undeclared": ("safeagents_canary", {"command": "id"}),
-    "host": ("bash", {"command": "echo https://exfil.invalid/probe"}),
-    "clean": ("bash", {"command": f"echo {CLEAN_OUTPUT}"}),
+CANARY_TOOL = "safeagents_canary"
+EXFIL_HOST = "exfil.invalid"
+COMMANDS = {
+    "undeclared": "id",
+    "host": f"echo https://{EXFIL_HOST}/probe",
+    "clean": f"echo {CLEAN_OUTPUT}",
 }
 FINAL_TEXT = "Done."
-_SCENARIO = re.compile(r"SCENARIO=(\w+)")
+_MARKER = re.compile(r"^(SCENARIO|TOOL|ARG|EXTRA)=(\S+)", re.MULTILINE)
+_MODEL_INFO = {"id": "fake-model", "object": "model", "created": 0, "owned_by": "fake", "type": "model"}
+
+
+def scenario_prompt(scenario: str, tool: str = "bash", arg: str = "command", extra: dict | None = None) -> str:
+    """The prompt a test gives the harness, telling the fake model which call to make."""
+    lines = ["Run the scripted step.", f"SCENARIO={scenario}", f"TOOL={tool}", f"ARG={arg}"]
+    if extra:
+        lines.append("EXTRA=" + json.dumps(extra, separators=(",", ":")))
+    return "\n".join(lines)
 
 
 def _message_text(content: object) -> str:
@@ -54,25 +68,47 @@ def _message_text(content: object) -> str:
     return ""
 
 
-def _scenario(messages: list) -> str:
+def _markers(messages: list) -> dict[str, str]:
+    """The markers of the first user message that has any."""
     for message in messages:
-        if message.get("role") != "user":
+        if not isinstance(message, dict) or message.get("role") != "user":
             continue
-        match = _SCENARIO.search(_message_text(message.get("content")))
-        if match:
-            return match.group(1)
-    return "clean"
+        markers = dict(_MARKER.findall(_message_text(message.get("content"))))
+        if "SCENARIO" in markers:
+            return markers
+    return {}
 
 
-def _has_tool_result(messages: list) -> bool:
-    """True once the harness has sent back the result of a call (OpenAI or Anthropic)."""
-    last = messages[-1] if messages else {}
-    if last.get("role") == "tool":
-        return True
-    content = last.get("content")
-    if last.get("role") == "user" and isinstance(content, list):
-        return any(isinstance(block, dict) and block.get("type") == "tool_result" for block in content)
-    return False
+def _tool_results(messages: list) -> list[str]:
+    """The text of every tool result the harness sent back (OpenAI or Anthropic)."""
+    results = []
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+        if message.get("role") == "tool":
+            results.append(_message_text(message.get("content")))
+            continue
+        content = message.get("content")
+        if message.get("role") != "user" or not isinstance(content, list):
+            continue
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "tool_result":
+                results.append(_message_text(block.get("content")))
+    return results
+
+
+def _scripted_call(body: dict) -> tuple[str, dict] | None:
+    """The tool call to answer `body` with, or None to answer in text."""
+    messages = body.get("messages") or []
+    markers = _markers(messages)
+    if not markers or not body.get("tools") or _tool_results(messages):
+        return None
+    scenario = markers["SCENARIO"]
+    tool = CANARY_TOOL if scenario == "undeclared" else markers.get("TOOL", "bash")
+    arguments = {markers.get("ARG", "command"): COMMANDS[scenario]}
+    if "EXTRA" in markers:
+        arguments.update(json.loads(markers["EXTRA"]))
+    return tool, arguments
 
 
 def _anthropic_events(tool: tuple[str, dict] | None) -> list[dict]:
@@ -194,6 +230,23 @@ class FakeModel:
         self.server.shutdown()
         self.server.server_close()
 
+    def scripted_requests(self) -> list[dict]:
+        """Model calls that carried a scenario marker and declared tools."""
+        scripted = []
+        for _, body in self.requests:
+            if body.get("tools") and _markers(body.get("messages") or []):
+                scripted.append(body)
+        return scripted
+
+    def tool_results(self) -> list[str]:
+        """Every tool result the harness sent back, i.e. what actually ran."""
+        results = []
+        for body in self.scripted_requests():
+            for result in _tool_results(body.get("messages") or []):
+                if result not in results:
+                    results.append(result)
+        return results
+
 
 class _Handler(BaseHTTPRequestHandler):
     model: FakeModel
@@ -204,12 +257,11 @@ class _Handler(BaseHTTPRequestHandler):
         path = self.path.split("?", 1)[0]
         self.model.requests.append((path, body))
 
-        messages = body.get("messages") or []
-        tool = None
-        if not _has_tool_result(messages):
-            tool = SCENARIOS[_scenario(messages)]
+        tool = _scripted_call(body)
         stream = bool(body.get("stream"))
-        if path.endswith("/v1/messages"):
+        if path.endswith("/messages/count_tokens"):
+            self._send_json({"input_tokens": 1})
+        elif path.endswith("/messages"):
             if stream:
                 self._send_events(_anthropic_events(tool), named=True)
             else:
@@ -223,8 +275,12 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_error(404)
 
     def do_GET(self) -> None:
-        self.model.requests.append((self.path, {}))
-        self.send_error(404)
+        path = self.path.split("?", 1)[0]
+        self.model.requests.append((path, {}))
+        if path.endswith("/models"):
+            self._send_json({"object": "list", "data": [_MODEL_INFO], "has_more": False})
+        else:
+            self.send_error(404)
 
     def _send_json(self, payload: dict) -> None:
         data = json.dumps(payload).encode()
