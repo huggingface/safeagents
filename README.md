@@ -35,7 +35,7 @@ The built-in host allowlist covers loopback, GitHub, PyPI, Hugging Face, npm and
 
 ## Usage
 
-Step-by-step guides for OpenClaw, OpenCode, Cline, Hermes, pi, Copilot and other popular harnesses are in [docs/](docs/README.md).
+Step-by-step guides for 12 coding agents (OpenClaw, OpenCode, Cline, Hermes, pi, OpenHands, Qwen Code, Copilot and more) are in [docs/](docs/README.md).
 
 **llama.cpp** (or any OpenAI-compatible server):
 

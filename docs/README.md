@@ -1,6 +1,6 @@
-# Using safeagents with popular harnesses
+# Using safeagents with coding agents
 
-Each page below shows how to put safeagents between one agent harness and its model server. They cover the ten most popular harnesses tracked by [Harness Lens](https://huggingface.co/spaces/ybelkada/harness-lens), ranked by the GitHub stars of their repositories on 2026-10-29.
+Each page below shows how to put safeagents between one agent harness and its model server. They cover 12 coding agents tracked by [Harness Lens](https://huggingface.co/spaces/ybelkada/harness-lens).
 
 safeagents checks tool calls in **OpenAI Chat Completions** and **Anthropic Messages** traffic. Every guide follows the same three steps:
 
@@ -22,5 +22,7 @@ Harnesses that only speak the OpenAI Responses API or the Gemini API can be rout
 | 8 | [pi](pi.md) | Anthropic Messages, Chat Completions | supported |
 | 9 | [Gemini CLI](gemini-cli.md) | Gemini API only | not supported |
 | 10 | [Cline](cline.md) | Anthropic Messages, Chat Completions | supported |
+| 11 | [OpenHands](openhands.md) | Anthropic Messages, Chat Completions (`api_mode="chat"`) | supported |
+| 12 | [Qwen Code](qwen-code.md) | Chat Completions (Anthropic Messages via bearer-auth gateways) | supported |
 
 Each page names the harness version it was checked against. The guides come from reading each harness's documentation and source code at that version. They haven't been run end to end, so start with `--log-only` and watch the proxy's terminal before you turn blocking on.
