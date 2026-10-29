@@ -4,21 +4,6 @@ A lightweight local proxy between your agent and its model server. It checks eve
 
 ## Quickstart
 
-```
-uv tool install git+https://github.com/huggingface/safeagents
-```
-
-Start a proxy in the background, then point your agent at it:
-
-```
-$ safeagents start https://api.anthropic.com --log-only
-1  http://127.0.0.1:8787 -> https://api.anthropic.com  (log: ~/.safeagents/run/1.log)
-
-$ ANTHROPIC_BASE_URL=http://127.0.0.1:8787 claude
-```
-
-Manage the running proxies:
-
 On macOS, Linux or WSL:
 
 ```
@@ -31,15 +16,29 @@ On Windows (PowerShell):
 irm https://raw.githubusercontent.com/huggingface/safeagents/main/scripts/install.ps1 | iex
 ```
 
-The script installs [uv](https://docs.astral.sh/uv/) if it's missing, installs safeagents as a uv tool and puts it on your `PATH`. Open a new terminal afterwards. To install a specific tag or commit, set `SAFEAGENTS_VERSION` first. Running the script again updates safeagents. Then run it:
+The script installs [uv](https://docs.astral.sh/uv/) if it's missing, installs safeagents as a uv tool and puts it on your `PATH`. Open a new terminal afterwards. To install a specific tag or commit, set `SAFEAGENTS_VERSION` first. Running the script again updates safeagents.
+
+Start a proxy in the background, then point your agent at it:
 
 ```
-safeagents <url> [port] [options]
+$ safeagents start https://api.anthropic.com --log-only
+1  http://127.0.0.1:8787 -> https://api.anthropic.com  (log: ~/.safeagents/run/1.log)
+
+$ ANTHROPIC_BASE_URL=http://127.0.0.1:8787 claude
 ```
 
-From a clone of this repository, use `uv sync` and `uv run safeagents <url> [port] [options]` instead.
+Manage the running proxies:
 
-`<url>` is the model server your agent normally talks to, such as `https://api.anthropic.com`. `[port]` is where safeagents listens and where you point the agent: `safeagents https://api.anthropic.com 8080` serves it at `http://127.0.0.1:8080`. It can also be a full address such as `0.0.0.0:8080`, and defaults to `127.0.0.1:8787`.
+```
+$ safeagents ls
+1   pid 82837   http://127.0.0.1:8787 -> https://api.anthropic.com  started 2026-10-29 22:26:58  --log-only
+$ safeagents stop 1
+stopped 1  http://127.0.0.1:8787 -> https://api.anthropic.com
+```
+
+`--log-only` only reports what it would block, which is a good way to start. Drop it to block for real. Setup guides for 12 coding agents are in [docs/](docs/README.md).
+
+## Commands
 
 | command | what it does |
 | --- | --- |
@@ -117,6 +116,8 @@ arguments
 ```
 
 ## Development
+
+From a clone of this repository:
 
 ```
 uv sync
