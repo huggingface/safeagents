@@ -85,6 +85,21 @@ uv run safeagents http://127.0.0.1:18081   # terminal 1
 uv run python scripts/simulate.py          # terminal 2
 ```
 
+### Running in the background
+
+`safeagents start` takes the same arguments as `safeagents`, but runs the proxy in the background and returns once it accepts connections. `safeagents ls` lists the running proxies and `safeagents stop ID` stops one:
+
+```
+$ safeagents start https://api.anthropic.com 8787 --log-only
+1  http://127.0.0.1:8787 -> https://api.anthropic.com  (log: ~/.safeagents/run/1.log)
+$ safeagents ls
+1   pid 82837   http://127.0.0.1:8787 -> https://api.anthropic.com  started 2026-10-29 22:26:58  --log-only
+$ safeagents stop 1
+stopped 1  http://127.0.0.1:8787 -> https://api.anthropic.com
+```
+
+A background proxy writes one plain line per call to its log, which is kept after it stops. Its state lives in `~/.safeagents/run`.
+
 ## How streaming works
 
 Each tool call is held until its arguments are complete, then either released unchanged (byte for byte) or replaced. Harnesses only run a tool call once it is complete, so this adds no latency to the agent. Text is forwarded as it arrives.

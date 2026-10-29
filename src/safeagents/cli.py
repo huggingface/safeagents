@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """safeagents <url> [port or host:port] [options]
+safeagents start <url> [port or host:port] [options]
+safeagents ls
+safeagents stop ID
 safeagents inspect [N]"""
 
 from __future__ import annotations
@@ -33,7 +36,7 @@ from .policy import DEFAULT_ALLOWED_HOSTS
 DESCRIPTION = """Proxies OpenAI- or Anthropic-compatible traffic to the upstream and blocks tool calls that
 use an undeclared tool, reach a host appearing nowhere in the conversation, or trip
 atif-scan's checks. Point your agent's base URL at the listen address. Run `safeagents inspect`
-to see the calls it flagged."""
+to see the calls it flagged. `safeagents start`, `ls` and `stop` run proxies in the background."""
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -41,6 +44,11 @@ def main(argv: list[str] | None = None) -> None:
         argv = sys.argv[1:]
     if argv[:1] == ["inspect"]:
         inspect(argv[1:])
+        return
+    if argv[:1] in (["start"], ["ls"], ["stop"]):
+        from . import runs
+
+        getattr(runs, argv[0])(argv[1:])
         return
 
     parser = argparse.ArgumentParser(prog="safeagents", description=DESCRIPTION)
@@ -125,6 +133,12 @@ def main(argv: list[str] | None = None) -> None:
         setup_parts.append(f"journal {config.journal.path}")
     setup = ", ".join(setup_parts)
     logger.info("[safeagents] listening on http://%s -> %s (%s)", args.listen, args.upstream, setup)
+    # Set by `safeagents start`: the lock tells `ls` and `stop` this proxy is running.
+    lock = os.environ.get("SAFEAGENTS_LOCK")
+    if lock:
+        from .runs import hold_lock
+
+        lock_file = hold_lock(Path(lock))  # noqa: F841 (held until the process exits)
     with Monitor(setup=f"{args.listen} → {args.upstream}") as config.monitor:
         app = create_app(args.upstream, config)
         uvicorn.run(app, host=host or "127.0.0.1", port=int(port), log_level="warning")
