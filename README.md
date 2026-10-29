@@ -16,12 +16,13 @@ This repository is mainly based on [atif-scan](https://github.com/huggingface/at
 
 ```
 uv sync
-uv run safeagents --upstream <url> [options]
+uv run safeagents <url> [port] [options]
 ```
+
+`<url>` is the model server your agent normally talks to, such as `https://api.anthropic.com`. `[port]` is where safeagents listens and where you point the agent: `safeagents https://api.anthropic.com 8080` serves it at `http://127.0.0.1:8080`. It can also be a full address such as `0.0.0.0:8080`, and defaults to `127.0.0.1:8787`.
 
 | flag | meaning |
 | --- | --- |
-| `--listen` | address to listen on (default `127.0.0.1:8787`) |
 | `--allow-host HOST` | extra host calls may reach, subdomains included (repeatable) |
 | `--log-only` | report flagged calls without changing responses |
 | `--no-scan` | request-only checks, no atif-scan |
@@ -80,8 +81,8 @@ To watch an agent without changing anything it does, run with `--log-only` and r
 To see it react without a real agent, run simulated sessions in which a fake model mixes ordinary calls with the misuse from the Cohere report (nothing is executed). Sixteen agents run at once by default; set how many with `--agents` and how fast they go with `--delay`:
 
 ```
-uv run safeagents --upstream http://127.0.0.1:18081     # terminal 1
-uv run python scripts/simulate.py                        # terminal 2
+uv run safeagents http://127.0.0.1:18081   # terminal 1
+uv run python scripts/simulate.py          # terminal 2
 ```
 
 ## How streaming works

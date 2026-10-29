@@ -4,7 +4,7 @@ Each page below shows how to put safeagents between one agent harness and its mo
 
 safeagents checks tool calls in **OpenAI Chat Completions** and **Anthropic Messages** traffic. Every guide follows the same three steps:
 
-1. Start `safeagents --upstream <the model server the harness normally uses>`.
+1. Start `safeagents <the model server the harness normally uses>`.
 2. Set the harness's base URL to `http://127.0.0.1:8787`, with or without `/v1` depending on the harness.
 3. Make sure every model the harness uses goes through the proxy, including the ones for titles, summaries, compaction and subagents.
 

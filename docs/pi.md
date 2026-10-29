@@ -9,10 +9,10 @@ pi reads endpoint overrides from `~/.pi/agent/models.json` (or `$PI_CODING_AGENT
 
 ```bash
 # Claude models
-uv run safeagents --upstream https://api.anthropic.com --log-only
+uv run safeagents https://api.anthropic.com --log-only
 
 # OpenAI models
-uv run safeagents --upstream https://api.openai.com --log-only
+uv run safeagents https://api.openai.com --log-only
 ```
 
 ## 2. Point pi at it
@@ -46,7 +46,7 @@ uv run safeagents --upstream https://api.openai.com --log-only
 pi --model safe-openai/gpt-5.4
 ```
 
-**DeepSeek's built-in provider** speaks Chat Completions with base URL `https://api.deepseek.com`. Run the proxy with `--upstream https://api.deepseek.com` and set:
+**DeepSeek's built-in provider** speaks Chat Completions with base URL `https://api.deepseek.com`. Run the proxy with `safeagents https://api.deepseek.com` and set:
 
 ```json
 { "providers": { "deepseek": { "baseUrl": "http://127.0.0.1:8787" } } }

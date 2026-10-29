@@ -11,10 +11,10 @@ Use the origin of your model server as the upstream:
 
 ```bash
 # OpenAI
-uv run safeagents --upstream https://api.openai.com --log-only
+uv run safeagents https://api.openai.com --log-only
 
 # Alibaba Cloud DashScope (Qwen models)
-uv run safeagents --upstream https://dashscope.aliyuncs.com/compatible-mode --log-only
+uv run safeagents https://dashscope.aliyuncs.com/compatible-mode --log-only
 ```
 
 ## 2. Point Qwen Code at it
@@ -88,7 +88,7 @@ The safeagents terminal should show the request and a `PASS` line for the call.
 ```
 
 - **Leave `/v1` off.** The SDK adds `/v1/messages`. The docs and the `/auth` UI suggest `https://api.anthropic.com/v1`, which would request `/v1/v1/messages`.
-- **Auth is the problem.** For any host other than `*.anthropic.com`, Qwen Code sends the key as `Authorization: Bearer`, not `x-api-key`. It also sends a `claude-cli` user agent. safeagents forwards these unchanged. Gateways that accept bearer tokens (for example `--upstream https://openrouter.ai/api`) should work. `api.anthropic.com` probably rejects an API key sent that way. This is untested. For Claude models, prefer an OpenAI-compatible gateway or another harness.
+- **Auth is the problem.** For any host other than `*.anthropic.com`, Qwen Code sends the key as `Authorization: Bearer`, not `x-api-key`. It also sends a `claude-cli` user agent. safeagents forwards these unchanged. Gateways that accept bearer tokens (for example `safeagents https://openrouter.ai/api`) should work. `api.anthropic.com` probably rejects an API key sent that way. This is untested. For Claude models, prefer an OpenAI-compatible gateway or another harness.
 
 ## Notes
 

@@ -74,7 +74,7 @@ def running_proxy(upstream: str, log_dir: Path) -> Iterator[Proxy]:
     log_path = log_dir / "safeagents.log"
     with open(log_path, "w") as log_file:
         process = subprocess.Popen(
-            [sys.executable, "-m", "safeagents.cli", "--upstream", upstream, "--listen", f"127.0.0.1:{port}"],
+            [sys.executable, "-m", "safeagents.cli", upstream, str(port)],
             stdout=log_file,
             stderr=subprocess.STDOUT,
         )

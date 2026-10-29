@@ -19,7 +19,7 @@ import pytest
 from conftest import OSS, bash_request
 
 from safeagents import Config, Guard
-from safeagents.cli import main
+from safeagents.cli import _listen, main
 from safeagents.journal import Journal, read
 
 
@@ -71,3 +71,8 @@ def test_inspect_unknown_call(tmp_path, capsys):
         main(["inspect", "7", "--journal", str(tmp_path / "calls.jsonl")])
     assert exit_info.value.code == 1
     assert "no call #7" in capsys.readouterr().err
+
+
+def test_listen_is_a_port_or_an_address():
+    assert _listen("8080") == "127.0.0.1:8080"
+    assert _listen("0.0.0.0:8080") == "0.0.0.0:8080"

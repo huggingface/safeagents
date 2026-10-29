@@ -16,7 +16,7 @@ safeagents forwards this traffic but can't read its tool calls (`functionCall` p
 This only works with a Gemini API key. Google-login (Code Assist) and Vertex AI traffic don't use this base URL.
 
 ```bash
-uv run safeagents --upstream https://generativelanguage.googleapis.com
+uv run safeagents https://generativelanguage.googleapis.com
 ```
 
 ```bash
