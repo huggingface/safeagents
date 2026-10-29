@@ -14,10 +14,25 @@ The judge only sees what the user wrote, the tool call and the findings. It neve
 
 This repository is mainly based on [atif-scan](https://github.com/huggingface/atif-scan)
 
+On macOS, Linux or WSL:
+
 ```
-uv sync
-uv run safeagents <url> [port] [options]
+curl -LsSf https://raw.githubusercontent.com/huggingface/safeagents/main/scripts/install.sh | sh
 ```
+
+On Windows (PowerShell):
+
+```
+irm https://raw.githubusercontent.com/huggingface/safeagents/main/scripts/install.ps1 | iex
+```
+
+The script installs [uv](https://docs.astral.sh/uv/) if it's missing, installs safeagents as a uv tool and puts it on your `PATH`. Open a new terminal afterwards. To install a specific tag or commit, set `SAFEAGENTS_VERSION` first. Running the script again updates safeagents. Then run it:
+
+```
+safeagents <url> [port] [options]
+```
+
+From a clone of this repository, use `uv sync` and `uv run safeagents <url> [port] [options]` instead.
 
 `<url>` is the model server your agent normally talks to, such as `https://api.anthropic.com`. `[port]` is where safeagents listens and where you point the agent: `safeagents https://api.anthropic.com 8080` serves it at `http://127.0.0.1:8080`. It can also be a full address such as `0.0.0.0:8080`, and defaults to `127.0.0.1:8787`.
 
