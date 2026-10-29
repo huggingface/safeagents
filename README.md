@@ -1,18 +1,8 @@
 [![safeagents demo](assets/safeagents.gif)](assets/safeagents.mp4)
 
-A lightweight local proxy between your agent and its model server. It checks every tool call the model makes before the harness sees it, and replaces the calls it blocks with a text notice. The harness then sees a plain text reply and runs nothing. Works with Pi, Claude Code, Hermes and with OpenAI Chat Completions and Anthropic Messages, streaming or not, so it fits any harness that lets you set a base URL.
+A lightweight local proxy between your agent and its model server. It checks every tool call the model makes before the harness sees it, and swaps the calls it blocks for a text notice, so the harness runs nothing. It works with any harness that lets you set a base URL (Claude Code, Pi, Hermes, OpenCode, ...), over OpenAI Chat Completions or Anthropic Messages, streaming or not.
 
-Each tool call goes through three stages:
-
-1. **Request-only checks.** A call is blocked if it uses a tool the request never declared, or if its arguments contain a host (URL or bare IP) that appears nowhere in the conversation: not in the system prompt, the user messages, the tool results or the tool definitions. The model's own earlier turns don't count.
-2. **[atif-scan](https://github.com/huggingface/atif-scan) checks.** The conversation becomes an ATIF trace and the pending call its last step, so atif-scan's detectors run on it. Examples: reading `/proc/1/environ`, `curl --noproxy`, a Kubernetes service-account token, or `unshare`/`nsenter` (a check safeagents adds). Findings at or above `--block-severity` (default `high`) are blocked. Milder ones make the call suspicious.
-3. **Decision model** (optional). Suspicious calls go to a judge model, which answers `allow` or `block` as constrained JSON. Without a judge, suspicious calls are only logged.
-
-The judge only sees what the user wrote, the tool call and the findings. It never sees the agent's reasoning, its prose or tool results, since an agent that wants a call to run would argue its case there. The judge can add blocks but never lift one, and it is only asked about calls that already raised a finding, so clean calls cost nothing.
-
-## Install
-
-This repository is mainly based on [atif-scan](https://github.com/huggingface/atif-scan)
+## Quickstart
 
 On macOS, Linux or WSL:
 
@@ -26,34 +16,68 @@ On Windows (PowerShell):
 irm https://raw.githubusercontent.com/huggingface/safeagents/main/scripts/install.ps1 | iex
 ```
 
-The script installs [uv](https://docs.astral.sh/uv/) if it's missing, installs safeagents as a uv tool and puts it on your `PATH`. Open a new terminal afterwards. To install a specific tag or commit, set `SAFEAGENTS_VERSION` first. Running the script again updates safeagents. Then run it:
+The script installs [uv](https://docs.astral.sh/uv/) if it's missing, installs safeagents as a uv tool and puts it on your `PATH`. Open a new terminal afterwards. To install a specific tag or commit, set `SAFEAGENTS_VERSION` first. Running the script again updates safeagents.
+
+Start a proxy in the background, then point your agent at it:
 
 ```
-safeagents <url> [port] [options]
+$ safeagents start https://api.anthropic.com --log-only
+1  http://127.0.0.1:8787 -> https://api.anthropic.com  (log: ~/.safeagents/run/1.log)
+
+$ ANTHROPIC_BASE_URL=http://127.0.0.1:8787 claude
 ```
 
-From a clone of this repository, use `uv sync` and `uv run safeagents <url> [port] [options]` instead.
+Manage the running proxies:
 
-`<url>` is the model server your agent normally talks to, such as `https://api.anthropic.com`. `[port]` is where safeagents listens and where you point the agent: `safeagents https://api.anthropic.com 8080` serves it at `http://127.0.0.1:8080`. It can also be a full address such as `0.0.0.0:8080`, and defaults to `127.0.0.1:8787`.
+```
+$ safeagents ls
+1   pid 82837   http://127.0.0.1:8787 -> https://api.anthropic.com  started 2026-10-29 22:26:58  --log-only
+$ safeagents stop 1
+stopped 1  http://127.0.0.1:8787 -> https://api.anthropic.com
+```
 
-| flag | meaning |
+`--log-only` only reports what it would block, which is a good way to start. Drop it to block for real. Setup guides for 12 coding agents are in [docs/](docs/README.md).
+
+## Commands
+
+| command | what it does |
 | --- | --- |
-| `--allow-host HOST` | extra host calls may reach, subdomains included (repeatable) |
+| `safeagents start URL [PORT] [options]` | runs a proxy in the background and prints its ID |
+| `safeagents ls` | lists the running proxies |
+| `safeagents stop ID` | stops one |
+| `safeagents URL [PORT] [options]` | runs a proxy in this terminal, with a live view of the calls |
+| `safeagents inspect [N]` | lists the calls that were blocked or flagged, or shows call N in full |
+
+`URL` is the model server your agent normally talks to. `PORT` is where the proxy listens (default `8787`, on `127.0.0.1`), or a full address such as `0.0.0.0:8080`.
+
+| option | meaning |
+| --- | --- |
 | `--log-only` | report flagged calls without changing responses |
+| `--allow-host HOST` | extra host calls may reach, subdomains included (repeatable) |
 | `--no-scan` | request-only checks, no atif-scan |
 | `--block-severity` | `low`, `medium`, `high` or `critical`: findings at or above it block without asking the judge |
 | `--judge-url`, `--judge-model` | the decision model; its API key comes from `SAFEAGENTS_JUDGE_API_KEY` |
 | `--judge-fail-closed` | block suspicious calls when the judge errors or gives no verdict (default: allow and log) |
-| `--journal PATH` | where calls that weren't simply passed are kept, with their full arguments (default `~/.safeagents/calls.jsonl`) |
+| `--journal PATH` | where flagged calls are kept (default `~/.safeagents/calls.jsonl`) |
 | `--no-journal` | keep no record of them |
 
-The built-in host allowlist covers loopback, GitHub, PyPI, Hugging Face, npm and crates.io. We can extend this list in the future.
+The built-in host allowlist covers loopback, GitHub, PyPI, Hugging Face, npm and crates.io.
 
-## Usage
+## How it works
 
-Step-by-step guides for 12 coding agents (OpenClaw, OpenCode, Cline, Hermes, pi, OpenHands, Qwen Code, Copilot and more) are in [docs/](docs/README.md). More harnesses can be supported but not documented (yet). You can also browse the existing opensource harnesses from the community from [here](https://huggingface.co/spaces/ybelkada/harness-lens).
+Each tool call goes through three stages:
 
-The proxy's terminal shows a histogram of verdicts and the latest tool calls, redrawn as calls come in:
+1. **Request-only checks.** A call is blocked if it uses a tool the request never declared, or if its arguments contain a host (URL or bare IP) that appears nowhere in the conversation. The model's own earlier turns don't count.
+2. **[atif-scan](https://github.com/huggingface/atif-scan) checks.** The conversation becomes an ATIF trace, so atif-scan's detectors run on the pending call: reading `/proc/1/environ`, `curl --noproxy`, a Kubernetes service-account token, `unshare`/`nsenter`, ... Findings at or above `--block-severity` (default `high`) are blocked, milder ones make the call suspicious.
+3. **Decision model** (optional). Suspicious calls go to a judge model, which answers `allow` or `block`. Without a judge, they are only logged.
+
+The judge only sees what the user wrote, the tool call and the findings, never the agent's reasoning or tool results, since an agent that wants a call to run would argue its case there. It can add blocks but never lift one, and clean calls never reach it.
+
+Streaming adds no latency: each tool call is held until its arguments are complete (harnesses only run complete calls), then released byte for byte or replaced. Text is forwarded as it arrives. atif-scan costs about 10 to 20 ms per call on an M-series Mac.
+
+## Watching the calls
+
+Run in the foreground (`safeagents URL`) and the terminal shows a live histogram of verdicts and the latest calls:
 
 ```
 ╔═  SAFEAGENTS  ═══════════════════════════════════════════════════════════════════════╗
@@ -73,9 +97,9 @@ The proxy's terminal shows a histogram of verdicts and the latest tool calls, re
 ╚══════════════════════════════════════════════════════════════════════════════════════╝
 ```
 
-`WARN` calls ran but raised an atif-scan finding; `FLAG` ones would have been blocked but ran because of `--log-only`. Piped to a file, it writes one plain line per call instead.
+`WARN` calls ran but raised a finding; `FLAG` ones would have been blocked without `--log-only`. A background proxy writes the same calls to its log, one line each.
 
-Every call that wasn't simply passed (blocked, flagged or suspicious) is also kept in `~/.safeagents/calls.jsonl` with its full arguments, the findings, the judge's answer and the user's task. Arguments can hold secrets, so the file is readable by you only. `safeagents inspect` lists the calls and `safeagents inspect N` shows one in full:
+Blocked, flagged and suspicious calls are also kept in `~/.safeagents/calls.jsonl` (readable by you only, since arguments can hold secrets):
 
 ```
 $ safeagents inspect 3
@@ -91,34 +115,20 @@ arguments
 }
 ```
 
-To watch an agent without changing anything it does, run with `--log-only` and read the journal afterwards.
+## Development
 
-To see it react without a real agent, run simulated sessions in which a fake model mixes ordinary calls with the misuse from the Cohere report (nothing is executed). Sixteen agents run at once by default; set how many with `--agents` and how fast they go with `--delay`:
+From a clone of this repository:
+
+```
+uv sync
+uv run pytest
+```
+
+To see it react without a real agent, `scripts/simulate.py` runs fake sessions that mix ordinary calls with the misuse from the Cohere report (nothing is executed):
 
 ```
 uv run safeagents http://127.0.0.1:18081   # terminal 1
-uv run python scripts/simulate.py          # terminal 2
-```
-
-## How streaming works
-
-Each tool call is held until its arguments are complete, then either released unchanged (byte for byte) or replaced. Harnesses only run a tool call once it is complete, so this adds no latency to the agent. Text is forwarded as it arrives.
-
-## Cost
-
-atif-scan runs once per tool call, on the user turns and the last 20 agent turns. On an M-series Mac that's about 10 to 20 ms per call, whatever the session length. The judge adds one model call per suspicious call only.
-
-## Limits
-
-- It only sees what the model *asks for*. A script that builds a URL at runtime (`"ht"+"tps://"...`) or a code-execution tool that fetches things indirectly gets past it. Pair it with default-deny egress in the sandbox.
-- Host extraction covers `scheme://host` URLs and IPv4 literals. Bare domains such as `curl evil.com` are not caught yet.
-- A host the model legitimately knows (say, a docs site the user never mentioned) is blocked. Use `--allow-host` or `--log-only`.
-- The OpenAI Responses API is not handled yet.
-
-## Tests
-
-```
-uv run pytest
+uv run python scripts/simulate.py          # terminal 2, see --agents and --delay
 ```
 
 ## License

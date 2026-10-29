@@ -34,8 +34,17 @@ logger = logging.getLogger("safeagents")
 
 # Request headers not forwarded upstream. `accept-encoding` is replaced by `identity`
 # so responses come back uncompressed and can be inspected.
+# - `host` would point at the proxy; httpx sets it from the upstream URL instead.
+# - `content-length` and `transfer-encoding` describe the client's framing; httpx
+#   recomputes them from the body we send.
+# - `connection` is hop-by-hop: it only applies to the client <-> proxy connection.
 SKIP_REQUEST = {b"host", b"content-length", b"accept-encoding", b"connection", b"transfer-encoding"}
+# Response headers not forwarded back to the client.
+# - `content-length` goes stale when the guard rewrites the body; Starlette sets it again.
+# - `connection` and `transfer-encoding` are hop-by-hop / framing, handled by our server.
+# - `content-encoding` would be wrong since httpx hands us already-decoded bytes.
 SKIP_RESPONSE = {"content-length", "connection", "transfer-encoding", "content-encoding"}
+# Every method is proxied so non-model endpoints keep working through the proxy.
 METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
 
 
@@ -44,26 +53,39 @@ def create_app(upstream: str, config: Config, transport: httpx.AsyncBaseTranspor
     # No read timeout: streams can idle for a long time between events.
     client = httpx.AsyncClient(transport=transport, timeout=httpx.Timeout(None, connect=10.0))
 
+    # Single catch-all handler: forwards the request upstream and guards the response.
     async def forward(request: Request) -> Response:
+        # Read the whole body up front: we need it both to parse it and to forward it.
         body = await request.body()
         try:
             request_json = json.loads(body) if body else None
         except ValueError:
             request_json = None
+
         # Only JSON object bodies are model calls worth guarding.
         guard = None
         if isinstance(request_json, dict):
             guard = Guard(request_json, config)
+            # `count_tokens` also carries `messages` but doesn't produce a model turn.
             is_model_turn = "messages" in request_json and not request.url.path.endswith("/count_tokens")
+            # here we increment the counter of the number of requests from the model
+            # it is activated only when monitor is turned on
             if config.monitor and is_model_turn:
                 config.monitor.request()
 
+        # Same path and query string as the incoming request, on the upstream host.
         url = upstream + request.url.path
         if request.url.query:
             url += f"?{request.url.query}"
+
+        # Here we build the request that is going to be sent to the upstream request URL
+        # we preserve its content and skip the meta-data from SKIP_REQUEST
         headers = [(name, value) for name, value in request.headers.raw if name.lower() not in SKIP_REQUEST]
         headers.append((b"accept-encoding", b"identity"))
         upstream_request = client.build_request(request.method, url, headers=headers, content=body)
+
+        # `stream=True` only reads the headers, so we can decide below how to consume the body.
+        # If upstream is unreachable, answer with a 502 instead of crashing the handler.
         try:
             upstream_response = await client.send(upstream_request, stream=True)
         except httpx.HTTPError as e:
@@ -74,16 +96,23 @@ def create_app(upstream: str, config: Config, transport: httpx.AsyncBaseTranspor
         response_headers = {
             name: value for name, value in upstream_response.headers.items() if name.lower() not in SKIP_RESPONSE
         }
+        # Streaming responses outlive this handler, so the upstream connection is
+        # closed once the client has received everything.
         close_upstream = BackgroundTask(upstream_response.aclose)
+
+        # Not a model call: pass the response through untouched.
         if guard is None:
             return StreamingResponse(
                 upstream_response.aiter_bytes(), status_code, response_headers, background=close_upstream
             )
+        # Streamed model response (SSE): guard it event by event as it arrives.
         if upstream_response.headers.get("content-type", "").startswith("text/event-stream"):
             return StreamingResponse(
                 _guarded(upstream_response, guard), status_code, response_headers, background=close_upstream
             )
 
+        # Non-streamed model response: read it fully, guard it, and only re-serialize
+        # when the guard actually changed something, so untouched bodies stay byte-identical.
         data = await upstream_response.aread()
         await upstream_response.aclose()
         try:
@@ -94,20 +123,26 @@ def create_app(upstream: str, config: Config, transport: httpx.AsyncBaseTranspor
             data = json.dumps(response_json, ensure_ascii=False, separators=(",", ":")).encode()
         return Response(data, status_code, response_headers)
 
+    # Ties the shared httpx client to the app's lifetime so it is closed on shutdown.
     @contextlib.asynccontextmanager
     async def lifespan(app: Starlette) -> AsyncIterator[None]:
         async with client:
             yield
 
+    # A single catch-all route: every path and method goes through `forward`.
     return Starlette(routes=[Route("/{path:path}", forward, methods=METHODS)], lifespan=lifespan)
 
 
 async def _guarded(upstream_response: httpx.Response, guard: Guard) -> AsyncIterator[bytes]:
+    """Yields the upstream SSE stream after running each event through the guard."""
     rewriter = SseRewriter(guard)
+    # Chunks don't line up with event boundaries: the rewriter buffers partial events
+    # and only returns bytes that are safe to send.
     async for chunk in upstream_response.aiter_bytes():
         out = await rewriter.feed(chunk)
         if out:
             yield out
+    # Flush any trailing event and whatever the guard was still holding back.
     out = await rewriter.finish()
     if out:
         yield out
