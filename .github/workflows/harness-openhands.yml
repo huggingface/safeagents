@@ -1,0 +1,53 @@
+# Runs the OpenHands Software Agent SDK through safeagents against a scripted model
+# (tests/harnesses). The SDK goes into its own virtualenv, not safeagents' locked one;
+# the test runs it through OPENHANDS_PYTHON. Pull requests test the SDK version
+# docs/openhands.md was checked against; pushes to main also test the latest release,
+# to catch SDK changes that break the guide.
+name: harness / openhands
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  openhands:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        openhands-version: ${{ fromJSON(github.event_name == 'pull_request' && '["1.56.0"]' || '["1.56.0", "latest"]') }}
+    name: openhands-sdk ${{ matrix.openhands-version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@18d369b23da25a81e9458561248e1aafff6a70fa # v10.3.1
+
+      - name: Install safeagents
+        run: uv sync --locked
+
+      - name: Install openhands-sdk ${{ matrix.openhands-version }}
+        env:
+          OPENHANDS_VERSION: ${{ matrix.openhands-version }}
+          OPENHANDS_VENV: ${{ runner.temp }}/openhands
+        run: |
+          if [ "$OPENHANDS_VERSION" = latest ]; then
+            packages="openhands-sdk openhands-tools"
+          else
+            packages="openhands-sdk==$OPENHANDS_VERSION openhands-tools==$OPENHANDS_VERSION"
+          fi
+          uv venv --python 3.12 "$OPENHANDS_VENV"
+          uv pip install --python "$OPENHANDS_VENV/bin/python" $packages
+          uv pip list --python "$OPENHANDS_VENV/bin/python" | grep -E '^(openhands-sdk|openhands-tools|litellm) '
+          LITELLM_LOCAL_MODEL_COST_MAP=True OPENHANDS_SUPPRESS_BANNER=1 \
+            "$OPENHANDS_VENV/bin/python" -c "import openhands.sdk, openhands.tools.terminal"
+          echo "OPENHANDS_PYTHON=$OPENHANDS_VENV/bin/python" >> "$GITHUB_ENV"
+
+      - name: Run the OpenHands SDK through safeagents
+        run: uv run pytest tests/harnesses/test_openhands.py -v --durations=0

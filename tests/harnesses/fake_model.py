@@ -44,7 +44,7 @@ COMMANDS = {
     "clean": f"echo {CLEAN_OUTPUT}",
 }
 FINAL_TEXT = "Done."
-_MARKER = re.compile(r"^(SCENARIO|TOOL|ARG|EXTRA)=(\S+)", re.MULTILINE)
+_MARKER = re.compile(r"^(SCENARIO|TOOL|ARG|EXTRA)=(.+?)\s*$", re.MULTILINE)
 _MODEL_INFO = {"id": "fake-model", "object": "model", "created": 0, "owned_by": "fake", "type": "model"}
 
 
@@ -52,7 +52,7 @@ def scenario_prompt(scenario: str, tool: str = "bash", arg: str = "command", ext
     """The prompt a test gives the harness, telling the fake model which call to make."""
     lines = ["Run the scripted step.", f"SCENARIO={scenario}", f"TOOL={tool}", f"ARG={arg}"]
     if extra:
-        lines.append("EXTRA=" + json.dumps(extra, separators=(",", ":")))
+        lines.append("EXTRA=" + json.dumps(extra))
     return "\n".join(lines)
 
 

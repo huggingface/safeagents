@@ -1,0 +1,43 @@
+# Runs the real Claude Code CLI through safeagents against a scripted model (tests/harnesses).
+# Pull requests test the Claude Code version docs/claude-code.md was checked against;
+# pushes to main also test the latest release, to catch Claude Code changes that break the guide.
+name: harness / claude-code
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  claude-code:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        claude-code-version: ${{ fromJSON(github.event_name == 'pull_request' && '["2.1.304"]' || '["2.1.304", "latest"]') }}
+    name: claude-code ${{ matrix.claude-code-version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@18d369b23da25a81e9458561248e1aafff6a70fa # v10.3.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+
+      - name: Install safeagents
+        run: uv sync --locked
+
+      - name: Install Claude Code ${{ matrix.claude-code-version }}
+        run: |
+          npm install --global --no-audit --no-fund @anthropic-ai/claude-code@${{ matrix.claude-code-version }}
+          claude --version
+
+      - name: Run Claude Code through safeagents
+        run: uv run pytest tests/harnesses/test_claude_code.py -v --durations=0
