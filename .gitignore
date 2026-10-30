@@ -3,3 +3,8 @@ examples
 __pycache__/
 .pytest_cache/
 .ruff_cache/
+
+# benchmark outputs hold trace contents; never commit them
+bench/out/
+bench*
+tests/test_bench.py
