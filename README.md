@@ -36,7 +36,7 @@ $ safeagents stop 1
 stopped 1  http://127.0.0.1:8787 -> https://api.anthropic.com
 ```
 
-`--log-only` only reports what it would block, which is a good way to start. Drop it to block for real. All commands and options are in [docs/commands.md](docs/commands.md), and setup guides for 12 coding agents in [docs/](docs/README.md).
+`--log-only` only reports what it would block, which is a good way to start. Drop it to block for real. All commands and options are in [docs/commands.md](docs/commands.md), and setup guides for 13 coding agents in [docs/](docs/README.md).
 
 ## How it works
 
