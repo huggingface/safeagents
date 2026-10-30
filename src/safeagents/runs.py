@@ -32,7 +32,8 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import IO
 
-from .cli import _listen
+from .constants import DEFAULT_LISTEN, LOCK_ENV, LOG_TAIL, START_TIMEOUT, START_USAGE, STOP_TIMEOUT
+from .utils import format_time, listen_address
 
 # File locking has no portable API in the standard library: Windows has msvcrt.locking,
 # everything else has fcntl.flock. Each module only exists on its own platform.
@@ -40,13 +41,6 @@ if os.name == "nt":
     import msvcrt
 else:
     import fcntl
-
-DEFAULT_LISTEN = "127.0.0.1:8787"
-START_TIMEOUT = 30.0
-STOP_TIMEOUT = 5.0
-LOG_TAIL = 20
-
-START_USAGE = "safeagents start URL [PORT_OR_ADDRESS] [proxy options]"
 
 
 def run_dir() -> Path:
@@ -69,7 +63,7 @@ def start(argv: list[str]) -> None:
     upstream, options = argv[0], argv[1:]
     listen = DEFAULT_LISTEN
     if options and not options[0].startswith("-"):
-        listen = _listen(options.pop(0))
+        listen = listen_address(options.pop(0))
     if _accepts(listen):
         sys.exit(f"safeagents: {listen} is already in use")
 
@@ -90,7 +84,7 @@ def start(argv: list[str]) -> None:
                 stdin=subprocess.DEVNULL,
                 stdout=log_file,
                 stderr=log_file,
-                env={**os.environ, "SAFEAGENTS_LOCK": str(lock)},
+                env={**os.environ, LOCK_ENV: str(lock)},
                 **detach,
             )
         record = {
@@ -131,7 +125,7 @@ def ls(argv: list[str]) -> None:
     if not records:
         print("no proxies running")
     for record in sorted(records, key=lambda record: record["id"]):
-        started = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(record["started"]))
+        started = format_time(record["started"])
         print(
             f"{record['id']:<3} pid {record['pid']:<7} http://{record['listen']} -> {record['upstream']}  "
             f"started {started}  {' '.join(record['options'])}".rstrip()

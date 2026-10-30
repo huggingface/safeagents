@@ -27,25 +27,12 @@ from starlette.requests import Request
 from starlette.responses import PlainTextResponse, Response, StreamingResponse
 from starlette.routing import Route
 
+from .constants import METHODS, SKIP_REQUEST, SKIP_RESPONSE
 from .guard import Config, Guard
 from .rewrite import SseRewriter, guard_response
+from .utils import compact_json
 
 logger = logging.getLogger("safeagents")
-
-# Request headers not forwarded upstream. `accept-encoding` is replaced by `identity`
-# so responses come back uncompressed and can be inspected.
-# - `host` would point at the proxy; httpx sets it from the upstream URL instead.
-# - `content-length` and `transfer-encoding` describe the client's framing; httpx
-#   recomputes them from the body we send.
-# - `connection` is hop-by-hop: it only applies to the client <-> proxy connection.
-SKIP_REQUEST = {b"host", b"content-length", b"accept-encoding", b"connection", b"transfer-encoding"}
-# Response headers not forwarded back to the client.
-# - `content-length` goes stale when the guard rewrites the body; Starlette sets it again.
-# - `connection` and `transfer-encoding` are hop-by-hop / framing, handled by our server.
-# - `content-encoding` would be wrong since httpx hands us already-decoded bytes.
-SKIP_RESPONSE = {"content-length", "connection", "transfer-encoding", "content-encoding"}
-# Every method is proxied so non-model endpoints keep working through the proxy.
-METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
 
 
 def create_app(upstream: str, config: Config, transport: httpx.AsyncBaseTransport | None = None) -> Starlette:
@@ -120,7 +107,7 @@ def create_app(upstream: str, config: Config, transport: httpx.AsyncBaseTranspor
         except ValueError:
             response_json = None
         if isinstance(response_json, dict) and await guard_response(response_json, guard):
-            data = json.dumps(response_json, ensure_ascii=False, separators=(",", ":")).encode()
+            data = compact_json(response_json).encode()
         return Response(data, status_code, response_headers)
 
     # Ties the shared httpx client to the app's lifetime so it is closed on shutdown.

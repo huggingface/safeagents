@@ -29,6 +29,9 @@ from atif_scan.access import access_rules
 from atif_scan.data.model import Channel
 from atif_scan.detectors.priming import builtin_allowances
 
+from .constants import ATIF_SCHEMA_VERSION, TRACE_QUALITY
+from .utils import content_text
+
 logger = logging.getLogger("safeagents")
 
 # Behaviour from the Cohere report that atif-scan has no check for yet.
@@ -41,11 +44,6 @@ EXTRA_DETECTORS = (
 )
 
 
-# Checks on how complete a recorded trace is. A pending call has no results yet by
-# definition, so they say nothing about it.
-TRACE_QUALITY = "integrity."
-
-
 @dataclass(frozen=True)
 class Signal:
     id: str
@@ -54,21 +52,6 @@ class Signal:
 
     def __str__(self) -> str:
         return f"{self.id} ({self.severity.name.lower()})"
-
-
-def _text(content: object) -> str:
-    """Text of a message `content`: a string, or the text parts of a list."""
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts = []
-        for part in content:
-            if not isinstance(part, dict) or part.get("type") not in ("text", "input_text"):
-                continue
-            if isinstance(part.get("text"), str):
-                parts.append(part["text"])
-        return "\n".join(parts)
-    return ""
 
 
 def _tool_call(call_id: object, name: object, args: object) -> dict:
@@ -102,9 +85,9 @@ def history(request: dict) -> list[dict]:
         if agent_step is None or not agent_step.get("tool_calls"):
             return
         results = agent_step.setdefault("observation", {"results": []})["results"]
-        results.append({"source_call_id": str(call_id), "content": _text(content)})
+        results.append({"source_call_id": str(call_id), "content": content_text(content)})
 
-    system = _text(request.get("system"))
+    system = content_text(request.get("system"))
     if system:
         steps.append({"source": "system", "message": system})
     for message in request.get("messages") or []:
@@ -114,12 +97,12 @@ def history(request: dict) -> list[dict]:
         content = message.get("content")
         content_blocks = content if isinstance(content, list) else []
         if role in ("system", "developer"):
-            steps.append({"source": "system", "message": _text(content)})
+            steps.append({"source": "system", "message": content_text(content)})
         elif role == "user":
             for block in content_blocks:
                 if isinstance(block, dict) and block.get("type") == "tool_result":
                     observe(block.get("tool_use_id"), block.get("content"))
-            text = _text(content)
+            text = content_text(content)
             if text:
                 steps.append({"source": "user", "message": text})
         elif role == "assistant":
@@ -133,7 +116,7 @@ def history(request: dict) -> list[dict]:
             for block in content_blocks:
                 if isinstance(block, dict) and block.get("type") == "tool_use":
                     tool_calls.append(_tool_call(block.get("id"), block.get("name"), block.get("input")))
-            step = {"source": "agent", "message": _text(content)}
+            step = {"source": "agent", "message": content_text(content)}
             if tool_calls:
                 step["tool_calls"] = tool_calls
             steps.append(step)
@@ -167,7 +150,7 @@ class Scanner:
         try:
             trace = parse_trace(
                 {
-                    "schema_version": "ATIF-v1.7",
+                    "schema_version": ATIF_SCHEMA_VERSION,
                     "steps": [{"step_id": index + 1, **step} for index, step in enumerate(trace_steps)],
                 }
             )

@@ -16,26 +16,9 @@
 from __future__ import annotations
 
 import json
-import re
 from collections.abc import Iterable
 
-# Hosts that may appear in tool calls even if the conversation never mentions them.
-DEFAULT_ALLOWED_HOSTS = (
-    "localhost",
-    "127.0.0.1",
-    "github.com",
-    "githubusercontent.com",
-    "pypi.org",
-    "pythonhosted.org",
-    "huggingface.co",
-    "hf.co",
-    "npmjs.org",
-    "crates.io",
-)
-
-_AUTHORITY = re.compile(r"://([^\s/?#\"'\\`)\]>]*)")
-_HOST = re.compile(r"[a-z0-9.-]*")
-_IPV4 = re.compile(r"(?<![\d.])\d{1,3}(?:\.\d{1,3}){3}(?![\d.])")
+from .constants import AUTHORITY_PATTERN, DEFAULT_ALLOWED_HOSTS, HOST_PATTERN, IPV4_PATTERN
 
 
 def declared_tools(request: dict) -> set[str]:
@@ -55,12 +38,12 @@ def extract_hosts(text: str) -> list[str]:
     """Lowercased hosts in `text`: the host of `scheme://` URLs and bare IPv4 literals."""
     text = text.lower()
     hosts = set()
-    for authority in _AUTHORITY.findall(text):
+    for authority in AUTHORITY_PATTERN.findall(text):
         host_and_port = authority.rsplit("@", 1)[-1]
-        host = _HOST.match(host_and_port).group()
+        host = HOST_PATTERN.match(host_and_port).group()
         if host:
             hosts.add(host)
-    for ip_address in _IPV4.findall(text):
+    for ip_address in IPV4_PATTERN.findall(text):
         if all(int(octet) <= 255 for octet in ip_address.split(".")):
             hosts.add(ip_address)
     return sorted(hosts)

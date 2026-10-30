@@ -19,9 +19,10 @@ from conftest import OSS, bash_request
 from rich.console import Console
 
 from safeagents import Config, Guard
-from safeagents.monitor import Monitor, summary
+from safeagents.monitor import Monitor
 from safeagents.proxy import create_app
 from safeagents.scan import Scanner
+from safeagents.utils import summary
 
 
 def make_monitor() -> tuple[Monitor, io.StringIO]:

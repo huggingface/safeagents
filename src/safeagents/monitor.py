@@ -19,7 +19,6 @@ in place. Piped: one plain line per call.
 
 from __future__ import annotations
 
-import json
 import time
 from collections import Counter, deque
 from typing import Self
@@ -31,35 +30,8 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-VERDICTS = {
-    "passed": ("PASS", "green"),
-    "suspicious": ("WARN", "yellow"),
-    "flagged": ("FLAG", "dark_orange"),
-    "blocked": ("BLOCK", "red"),
-}
-SUMMARY_KEYS = ("command", "cmd", "url", "query", "file_path", "path", "pattern", "code")
-MAX_SUMMARY = 60
-# Lines the histogram box takes: borders, the totals line, a gap and one bar per verdict.
-STATS_HEIGHT = 2 + 2 + len(VERDICTS)
-
-
-def summary(args: str) -> str:
-    """The one argument that says what a call does, else the raw arguments, on one line."""
-    try:
-        parsed = json.loads(args)
-    except ValueError:
-        parsed = None
-    text = args
-    if isinstance(parsed, dict):
-        for key in SUMMARY_KEYS:
-            value = parsed.get(key)
-            if isinstance(value, str) and value:
-                text = value
-                break
-    text = " ".join(text.split())
-    if len(text) > MAX_SUMMARY:
-        text = text[: MAX_SUMMARY - 1] + "~"
-    return text
+from .constants import STATS_HEIGHT, VERDICTS
+from .utils import summary
 
 
 class Monitor:

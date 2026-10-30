@@ -24,10 +24,10 @@ import os
 import time
 from pathlib import Path
 
-DEFAULT_PATH = Path.home() / ".safeagents" / "calls.jsonl"
+from .constants import DEFAULT_JOURNAL_PATH
 
 
-def read(path: Path = DEFAULT_PATH) -> list[dict]:
+def read(path: Path = DEFAULT_JOURNAL_PATH) -> list[dict]:
     """The recorded calls, oldest first; unreadable lines are skipped."""
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
@@ -47,7 +47,7 @@ def read(path: Path = DEFAULT_PATH) -> list[dict]:
 class Journal:
     """Appends calls to a JSON-lines file, numbering them after those already in it."""
 
-    def __init__(self, path: Path = DEFAULT_PATH) -> None:
+    def __init__(self, path: Path = DEFAULT_JOURNAL_PATH) -> None:
         self.path = Path(path)
         self._next_id: int | None = None
 

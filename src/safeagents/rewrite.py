@@ -20,12 +20,11 @@ plain stop when no call is left, so the harness sees a text reply and runs nothi
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass, field
 
+from .constants import SSE_BOUNDARY, TOOL_BLOCKS
 from .guard import Guard
-
-TOOL_BLOCKS = ("tool_use", "server_tool_use")
+from .utils import compact_json
 
 
 def append_content(slot: dict, text: str) -> None:
@@ -82,7 +81,7 @@ async def guard_response(response: dict, guard: Guard) -> bool:
             if not (isinstance(content_block, dict) and content_block.get("type") in TOOL_BLOCKS):
                 continue
             name = str(content_block.get("name") or "")
-            args = json.dumps(content_block.get("input"), ensure_ascii=False, separators=(",", ":"))
+            args = compact_json(content_block.get("input"))
             if await guard.allow(name, args):
                 kept_tool = True
             elif block:
@@ -148,7 +147,7 @@ class StreamGuard:
             start_input = content_block.get("input")
             input_text = ""
             if start_input:
-                input_text = json.dumps(start_input, ensure_ascii=False, separators=(",", ":"))
+                input_text = compact_json(start_input)
             self.held = _HeldBlock(event.get("index"), name, input_text, [raw])
             return []
         if kind == "content_block_delta" and holding:
@@ -278,9 +277,6 @@ class StreamGuard:
         return out
 
 
-_BOUNDARY = re.compile(rb"\r\n\r\n|\n\n")
-
-
 def _encode(items: list[bytes | dict]) -> bytes:
     out = bytearray()
     for item in items:
@@ -290,7 +286,7 @@ def _encode(items: list[bytes | dict]) -> bytes:
         # Anthropic streams name each event after its `type`.
         if isinstance(item.get("type"), str):
             out += f"event: {item['type']}\n".encode()
-        data = json.dumps(item, ensure_ascii=False, separators=(",", ":"))
+        data = compact_json(item)
         out += f"data: {data}\n\n".encode()
     return bytes(out)
 
@@ -307,7 +303,7 @@ class SseRewriter:
         """Feeds a chunk and returns the bytes to send downstream."""
         self.buffer += chunk
         out = bytearray()
-        while boundary := _BOUNDARY.search(self.buffer):
+        while boundary := SSE_BOUNDARY.search(self.buffer):
             raw = self.buffer[: boundary.end()]
             self.buffer = self.buffer[boundary.end() :]
             out += await self._rewrite(raw[: boundary.start()], raw)
