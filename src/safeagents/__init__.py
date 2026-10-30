@@ -19,8 +19,9 @@ milder atif-scan findings can be sent to a decision model. Handles OpenAI Chat
 Completions and Anthropic Messages, full JSON responses and event streams.
 """
 
+from .constants import DEFAULT_ALLOWED_HOSTS
 from .guard import Blocked, Config, Guard
-from .policy import DEFAULT_ALLOWED_HOSTS, Policy, declared_tools, extract_hosts
+from .policy import Policy, declared_tools, extract_hosts
 
 __all__ = [
     "DEFAULT_ALLOWED_HOSTS",

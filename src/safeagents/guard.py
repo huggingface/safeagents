@@ -27,10 +27,11 @@ from dataclasses import dataclass, field
 
 from atif_scan import Severity
 
+from .constants import DEFAULT_ALLOWED_HOSTS
 from .journal import Journal
 from .judge import Judge, JudgeError, task_text
 from .monitor import Monitor
-from .policy import DEFAULT_ALLOWED_HOSTS, Policy
+from .policy import Policy
 from .scan import Scanner, Signal, history, recent
 
 logger = logging.getLogger("safeagents")

@@ -19,8 +19,9 @@ import pytest
 from conftest import OSS, bash_request
 
 from safeagents import Config, Guard
-from safeagents.cli import _listen, main
+from safeagents.cli import main
 from safeagents.journal import Journal, read
+from safeagents.utils import listen_address
 
 
 def review(journal: Journal, user: str, args: dict, block: bool = True) -> bool:
@@ -74,5 +75,5 @@ def test_inspect_unknown_call(tmp_path, capsys):
 
 
 def test_listen_is_a_port_or_an_address():
-    assert _listen("8080") == "127.0.0.1:8080"
-    assert _listen("0.0.0.0:8080") == "0.0.0.0:8080"
+    assert listen_address("8080") == "127.0.0.1:8080"
+    assert listen_address("0.0.0.0:8080") == "0.0.0.0:8080"
