@@ -1,0 +1,47 @@
+# Runs the real Mistral Vibe CLI through safeagents against a scripted model (tests/harnesses).
+# Vibe goes into its own virtualenv, not safeagents' locked one; the test runs it through
+# VIBE_BIN. Pull requests test the Vibe version docs/mistral-vibe.md was checked against;
+# pushes to main also test the latest release, to catch Vibe changes that break the guide.
+name: harness / mistral-vibe
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  mistral-vibe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        vibe-version: ${{ fromJSON(github.event_name == 'pull_request' && '["3.0.4"]' || '["3.0.4", "latest"]') }}
+    name: mistral-vibe ${{ matrix.vibe-version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@18d369b23da25a81e9458561248e1aafff6a70fa # v10.3.1
+
+      - name: Install safeagents
+        run: uv sync --locked
+
+      - name: Install Mistral Vibe ${{ matrix.vibe-version }}
+        env:
+          VIBE_VERSION: ${{ matrix.vibe-version }}
+          VIBE_VENV: ${{ runner.temp }}/mistral-vibe
+        run: |
+          package=mistral-vibe
+          if [ "$VIBE_VERSION" != latest ]; then package="mistral-vibe==$VIBE_VERSION"; fi
+          uv venv --python 3.12 "$VIBE_VENV"
+          uv pip install --python "$VIBE_VENV/bin/python" "$package"
+          "$VIBE_VENV/bin/vibe" --version
+          echo "VIBE_BIN=$VIBE_VENV/bin/vibe" >> "$GITHUB_ENV"
+
+      - name: Run Mistral Vibe through safeagents
+        run: uv run pytest tests/harnesses/test_mistral_vibe.py -v --durations=0
