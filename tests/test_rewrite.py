@@ -14,6 +14,7 @@
 import asyncio
 import json
 
+import pytest
 from conftest import OSS, REQUEST, RESPONSE, bash_request
 
 from safeagents import Blocked, Guard
@@ -154,6 +155,43 @@ def test_openai_stream_is_reassembled_and_checked(plain):
     # One call survived, so the turn still ends in a tool call.
     assert '"finish_reason":"tool_calls"' in out
     assert out.endswith("data: [DONE]\n\n")
+
+
+def multiline(event: str, newline: str) -> str:
+    """Spreads each event's JSON over several `data:` lines, as SSE allows."""
+    out = []
+    for block in event.split("\n\n"):
+        if not block:
+            continue
+        lines = []
+        for line in block.split("\n"):
+            if line.startswith("data: {"):
+                payload = json.dumps(json.loads(line[6:]), indent=1)
+                lines += [f"data: {part}" for part in payload.split("\n")]
+            else:
+                lines.append(line)
+        out.append(newline.join(lines) + newline * 2)
+    return "".join(out)
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+@pytest.mark.parametrize("size", [1, 7, 4096])
+def test_multiline_data_call_is_blocked(plain, newline, size):
+    stream = multiline(openai_chunk(tool_delta(0, "bash", '{"cmd": "ls"}')), newline)
+    stream += multiline(openai_chunk({}, "tool_calls"), newline)
+    rewriter = SseRewriter(Guard(REQUEST, plain))
+    out = run_stream(rewriter, stream, size)
+    assert rewriter.stream.guard.flagged == [Blocked("bash", "undeclared tool")]
+    assert "[safeagents] blocked call to `bash`" in out
+    assert '"cmd' not in out
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_multiline_text_passes_through_byte_for_byte(plain, newline):
+    stream = multiline(openai_chunk({"role": "assistant", "content": "hi"}), newline)
+    rewriter = SseRewriter(Guard(bash_request("hi"), plain))
+    assert run_stream(rewriter, stream, 3) == stream
+    assert not rewriter.stream.guard.flagged
 
 
 def test_text_stream_passes_through_byte_for_byte(plain):

@@ -334,13 +334,16 @@ class SseRewriter:
         return out + _encode(await self.stream.flush())
 
     async def _rewrite(self, body: bytes, raw: bytes) -> bytes:
-        data = None
+        # Clients join every `data` field of an event with newlines, so the
+        # guard must see the same payload or a split JSON event slips past.
+        fields = []
         for line in body.decode("utf-8", "replace").splitlines():
-            if line.startswith("data:"):
-                data = line[5:].lstrip()
-                break
-        if data is None:
+            name, _, value = line.partition(":")
+            if name == "data":
+                fields.append(value.removeprefix(" "))
+        if not fields:
             return raw
+        data = "\n".join(fields)
         try:
             event = json.loads(data)
         except ValueError:
