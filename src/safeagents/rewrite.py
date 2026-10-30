@@ -44,24 +44,39 @@ def swap_reason(slot: dict, key: str, old: str, new: str) -> bool:
 
 
 async def guard_response(response: dict, guard: Guard) -> bool:
-    """Checks a full (non-streaming) response; True if it was changed."""
+    """
+    Checks a full (non-streaming) response; True if it was changed.
+    Takes as input the response from the server and a `Guard` class. The
+    response object is modified in-place in case of any flagged content.
+    """
     block = guard.config.block
     flagged_before = len(guard.flagged)
+    choices = response.get("choices", [])
 
     # OpenAI: choices[].message.tool_calls[]
-    for choice in response.get("choices") or []:
-        message = choice.get("message") if isinstance(choice, dict) else None
+    for choice in choices:
+        if isinstance(choice, dict):
+            message = choice.get("message")
+        else:
+            message = None
+
+        # If the message is not a valid dict of the list of tool calls not valid
+        # we drop.
         if not isinstance(message, dict) or not isinstance(message.get("tool_calls"), list):
             continue
+
         flagged_before_choice = len(guard.flagged)
         kept_calls = []
+
         for tool_call in message["tool_calls"]:
-            function = tool_call.get("function") or {}
-            name = str(function.get("name") or "")
-            args = str(function.get("arguments") or "")
+            function = tool_call.get("function", {})
+            name = str(function.get("name", ""))
+            args = str(function.get("arguments", ""))
+
             if await guard.allow(name, args):
                 kept_calls.append(tool_call)
         newly_flagged = guard.flagged[flagged_before_choice:]
+
         if not block or not newly_flagged:
             continue
         if kept_calls:
@@ -80,7 +95,7 @@ async def guard_response(response: dict, guard: Guard) -> bool:
         for index, content_block in enumerate(content):
             if not (isinstance(content_block, dict) and content_block.get("type") in TOOL_BLOCKS):
                 continue
-            name = str(content_block.get("name") or "")
+            name = str(content_block.get("name", ""))
             args = compact_json(content_block.get("input"))
             if await guard.allow(name, args):
                 kept_tool = True

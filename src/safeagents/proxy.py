@@ -106,8 +106,10 @@ def create_app(upstream: str, config: Config, transport: httpx.AsyncBaseTranspor
             response_json = json.loads(data)
         except ValueError:
             response_json = None
-        if isinstance(response_json, dict) and await guard_response(response_json, guard):
-            data = compact_json(response_json).encode()
+        if isinstance(response_json, dict):
+            has_been_guarded = await guard_response(response_json, guard)
+            if has_been_guarded:
+                data = compact_json(response_json).encode()
         return Response(data, status_code, response_headers)
 
     # Ties the shared httpx client to the app's lifetime so it is closed on shutdown.
