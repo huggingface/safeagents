@@ -21,6 +21,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -33,6 +34,7 @@ from .judge import Judge, JudgeError, task_text
 from .monitor import Monitor
 from .policy import Policy
 from .scan import Scanner, Signal, history, recent
+from .utils import compact_json
 
 logger = logging.getLogger("safeagents")
 
@@ -75,6 +77,13 @@ class Review:
     # The judge's answer as "allow: why", "block: why" or "error: why".
     judge: str | None = None
 
+    @property
+    def verdict(self) -> str:
+        """`blocked` with a reason, `suspicious` with only signals, else `passed`."""
+        if self.reason is not None:
+            return "blocked"
+        return "suspicious" if self.signals else "passed"
+
 
 class Guard:
     """Reviews the tool calls of one response to one request."""
@@ -87,22 +96,22 @@ class Guard:
         self._calls: list[tuple[str, str]] = []
         self._steps: list[dict] | None = None
 
-    async def allow(self, name: str, args: str) -> bool:
-        """Reviews a complete call; True if it may run (always, in log-only mode)."""
+    async def review(self, name: str, args: str) -> Review:
+        """Reviews a complete call without blocking, logging or recording it."""
         self._calls.append((name, args))
         policy_reason = self.policy.check(name, args)
         if policy_reason is not None:
-            review = Review(policy_reason)
-        else:
-            review = await self._scan(name, args)
+            return Review(policy_reason)
+        return await self._scan(name, args)
 
+    async def allow(self, name: str, args: str) -> bool:
+        """Reviews a complete call; True if it may run (always, in log-only mode)."""
+        review = await self.review(name, args)
+        verdict = review.verdict
         if review.reason is not None:
             self.flagged.append(Blocked(name, review.reason))
-            verdict = "blocked" if self.config.block else "flagged"
-        elif review.signals:
-            verdict = "suspicious"
-        else:
-            verdict = "passed"
+            if not self.config.block:
+                verdict = "flagged"
         signal_names = [str(signal) for signal in review.signals]
 
         call_id = None
@@ -160,3 +169,25 @@ class Guard:
         if block:
             return Review(f"{findings}; judge: {why}", signals, f"block: {why}")
         return Review(None, signals, f"allow: {why}")
+
+
+def call_parts(tool_call: dict) -> tuple[str, str]:
+    """The name and raw JSON arguments of an OpenAI tool call or Anthropic tool_use block."""
+    function = tool_call.get("function")
+    if isinstance(function, dict):
+        name, args = function.get("name"), function.get("arguments")
+    else:
+        name, args = tool_call.get("name"), tool_call.get("input", tool_call.get("arguments"))
+    if not isinstance(args, str):
+        args = compact_json(args if args is not None else {})
+    return str(name or ""), args
+
+
+async def analyze(request: dict, tool_call: dict, config: Config | None = None) -> Review:
+    """Reviews one tool call the model made in answer to `request`."""
+    return await Guard(request, config or Config()).review(*call_parts(tool_call))
+
+
+def analyze_sync(request: dict, tool_call: dict, config: Config | None = None) -> Review:
+    """`analyze` for code that isn't already running an event loop."""
+    return asyncio.run(analyze(request, tool_call, config))
