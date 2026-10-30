@@ -1,5 +1,7 @@
 # Using safeagents with coding agents
 
+For every command and option, see [commands.md](commands.md).
+
 Each page below shows how to put safeagents between one agent harness and its model server. They cover 12 coding agents tracked by [Harness Lens](https://huggingface.co/spaces/ybelkada/harness-lens).
 
 safeagents checks tool calls in **OpenAI Chat Completions** and **Anthropic Messages** traffic. Every guide follows the same three steps:
