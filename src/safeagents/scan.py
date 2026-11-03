@@ -20,9 +20,12 @@ out: a model's account of what it is doing is not evidence of what it does.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 from atif_scan import CheckSpec, Context, Engine, RegexDetector, Severity, builtin_detectors, parse_trace
 from atif_scan.access import access_rules
@@ -136,11 +139,30 @@ def recent(steps: list[dict], agent_steps: int = 20) -> list[dict]:
     return [step for index, step in enumerate(steps) if index not in dropped]
 
 
-class Scanner:
-    """Runs atif-scan's built-in checks plus `EXTRA_DETECTORS`."""
+def load_plugin(spec: str) -> list:
+    """The checks `module:factory` returns, as atif-scan's `--plugin` takes them (e.g. `my_pack:checks`).
 
-    def __init__(self) -> None:
-        self.engine = Engine([*builtin_detectors(), *access_rules(), *builtin_allowances(), *EXTRA_DETECTORS])
+    The module may also be a file, `path/to/my_pack.py:checks`. A plugin returns atif-scan detectors and
+    rules, which can add blocks, and allowances, which excuse the findings of the checks they cover (e.g.
+    reading a file the task itself hands the agent).
+    """
+    module, _, factory = spec.rpartition(":")
+    if not module or not factory:
+        raise ValueError(f"plugin must be MODULE:FACTORY, got {spec!r}")
+    if module.endswith(".py"):
+        file_spec = importlib.util.spec_from_file_location(Path(module).stem, module)
+        loaded = importlib.util.module_from_spec(file_spec)
+        file_spec.loader.exec_module(loaded)
+    else:
+        loaded = importlib.import_module(module)
+    return list(getattr(loaded, factory)())
+
+
+class Scanner:
+    """Runs atif-scan's built-in checks, `EXTRA_DETECTORS` and the `checks` plugins add."""
+
+    def __init__(self, checks: Sequence = ()) -> None:
+        self.engine = Engine([*builtin_detectors(), *access_rules(), *builtin_allowances(), *EXTRA_DETECTORS, *checks])
 
     def signals(self, steps: list[dict], calls: list[tuple[str, str]]) -> list[Signal]:
         """Findings on the last of `calls`, judged after the conversation `steps`."""

@@ -71,6 +71,13 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--log-only", action="store_true", help="report flagged calls without changing responses")
     parser.add_argument("--no-scan", action="store_true", help="turn atif-scan's checks off")
     parser.add_argument(
+        "--plugin",
+        action="append",
+        default=[],
+        metavar="MODULE:FACTORY",
+        help="atif-scan checks to add: detectors and rules that block, allowances that excuse (repeatable)",
+    )
+    parser.add_argument(
         "--block-severity",
         default="high",
         choices=[severity.name.lower() for severity in Severity if severity > Severity.INFO],
@@ -108,11 +115,11 @@ def main(argv: list[str] | None = None) -> None:
     from .judge import Judge
     from .monitor import Monitor
     from .proxy import create_app
-    from .scan import Scanner
+    from .scan import Scanner, load_plugin
 
     scanner = None
     if not args.no_scan:
-        scanner = Scanner()
+        scanner = Scanner([check for plugin in args.plugin for check in load_plugin(plugin)])
     judge = None
     if args.judge_url:
         api_key = os.environ.get(JUDGE_API_KEY_ENV)
@@ -130,7 +137,7 @@ def main(argv: list[str] | None = None) -> None:
     host, _, port = args.listen.rpartition(":")
     setup_parts = ["block" if config.block else "log-only"]
     if config.scanner:
-        setup_parts.append("atif-scan")
+        setup_parts.append("atif-scan" + "".join(f" + {plugin}" for plugin in args.plugin))
     if config.judge:
         setup_parts.append(f"judge {args.judge_url}")
     if config.journal:

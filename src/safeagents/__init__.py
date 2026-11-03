@@ -22,6 +22,7 @@ Completions and Anthropic Messages, full JSON responses and event streams.
 from .constants import DEFAULT_ALLOWED_HOSTS
 from .guard import Blocked, Config, Guard, Review, analyze, analyze_sync
 from .policy import Policy, declared_tools, extract_hosts
+from .scan import Scanner, load_plugin
 
 __all__ = [
     "DEFAULT_ALLOWED_HOSTS",
@@ -30,8 +31,10 @@ __all__ = [
     "Guard",
     "Policy",
     "Review",
+    "Scanner",
     "analyze",
     "analyze_sync",
     "declared_tools",
     "extract_hosts",
+    "load_plugin",
 ]

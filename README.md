@@ -50,6 +50,38 @@ The judge only sees what the user wrote, the tool call and the findings, never t
 
 Streaming adds no latency: each tool call is held until its arguments are complete (harnesses only run complete calls), then released byte for byte or replaced. Text is forwarded as it arrives. atif-scan costs about 10 to 20 ms per call on an M-series Mac.
 
+## Plugins
+
+`--plugin MODULE:FACTORY` (or `path/to/file.py:FACTORY`) adds your own [atif-scan](https://github.com/huggingface/atif-scan) checks, with the same convention as atif-scan's `--plugin`: `FACTORY()` returns a list of detectors, rules and allowances. Detectors and rules at or above `--block-severity` block, like the built-in ones. An allowance excuses the findings of the checks it covers, for a task that legitimately does what a check flags. `--allow-host` adds hosts calls may reach.
+
+```python
+# my_pack.py
+from atif_scan import Allowance, CheckSpec, RegexDetector, Severity
+from atif_scan.data.model import Channel
+
+
+def checks():
+    return [
+        # Block: fetching the task's published answer.
+        RegexDetector(
+            CheckSpec("my_pack.answer_source", Severity.HIGH, title="Task's published answer sought"),
+            r"(?<![\w-])task\.toml\b",
+            frozenset({Channel.COMMAND, Channel.ARGUMENTS}),
+        ),
+        # Allow: this task asks the agent to look its question up on the web.
+        Allowance(
+            CheckSpec("expected.my_pack.web_research", title="The task is web research"),
+            frozenset({"lookup.instruction_phrase_search"}),
+        ),
+    ]
+```
+
+```
+PYTHONPATH=. safeagents start http://localhost:8000 --plugin my_pack:checks --allow-host api.example.com
+```
+
+From Python, pass them to the scanner: `Config(scanner=Scanner(load_plugin("my_pack:checks")))`.
+
 ## Benchmark
 
 [safeagents-judge-bench](https://huggingface.co/datasets/harness-hub/safeagents-judge-bench) scores decision models on 562 real agent tool calls that the scanner flags, each labelled `allow` or `block` with a kind of misuse (reward hacking, harness introspection, credential misuse, ...). Use its leaderboard to pick a `--judge-model`.
