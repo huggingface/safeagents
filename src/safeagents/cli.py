@@ -15,7 +15,9 @@
 safeagents start <url> [port or host:port] [options]
 safeagents ls
 safeagents stop ID
-safeagents inspect [N]"""
+safeagents inspect [N]
+safeagents scrub PATH... [--out DIR]
+safeagents publish PATH... --repo NAMESPACE/NAME"""
 
 from __future__ import annotations
 
@@ -53,6 +55,11 @@ def main(argv: list[str] | None = None) -> None:
         from . import runs
 
         getattr(runs, argv[0])(argv[1:])
+        return
+    if argv[:1] in (["scrub"], ["publish"]):
+        from . import scrub
+
+        getattr(scrub, argv[0])(argv[1:])
         return
 
     parser = argparse.ArgumentParser(prog="safeagents", description=DESCRIPTION)

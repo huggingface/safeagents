@@ -7,6 +7,8 @@
 | `safeagents stop ID` | stops one |
 | `safeagents URL [PORT] [options]` | runs a proxy in this terminal, with a live view of the calls |
 | `safeagents inspect [N]` | lists the calls that were blocked or flagged, or shows call N in full |
+| `safeagents scrub PATH... [--out DIR]` | reports the sensitive information in trajectories, and writes redacted copies to `DIR` |
+| `safeagents publish PATH... --repo NAMESPACE/NAME` | redacts trajectories and uploads the redacted copies to a Hugging Face dataset |
 
 `URL` is the model server your agent normally talks to. `PORT` is where the proxy listens (default `8787`, on `127.0.0.1`), or a full address such as `0.0.0.0:8080`.
 
@@ -22,3 +24,18 @@
 | `--no-journal` | keep no record of them |
 
 The built-in host allowlist covers loopback, GitHub, PyPI, Hugging Face, npm and crates.io.
+
+## Scrubbing and publishing trajectories
+
+`scrub` and `publish` take JSON, JSON-lines (`.jsonl`, `.ndjson`) and text (`.txt`, `.md`, `.log`) files, or directories holding them. `scrub` exits with 1 when it found something, so it can gate a CI job.
+
+| option | meaning |
+| --- | --- |
+| `--redact VALUE` | a value to mask everywhere: a name, a hostname, a project codename (repeatable) |
+| `--no-env` | don't look for the values of this machine's secret-named environment variables |
+| `--no-pii` | only mask credentials; keep emails, home directories and public IPs |
+| `--out DIR` | (`scrub`) write redacted copies here |
+| `--path-in-repo DIR` | (`publish`) folder in the dataset |
+| `--public` | (`publish`) create the dataset public if it doesn't exist (default: private) |
+| `--dry-run` | (`publish`) redact and report, upload nothing |
+| `-y`, `--yes` | (`publish`) upload without asking |

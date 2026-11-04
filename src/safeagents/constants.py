@@ -29,7 +29,8 @@ JUDGE_API_KEY_ENV = "SAFEAGENTS_JUDGE_API_KEY"
 DESCRIPTION = """Proxies OpenAI- or Anthropic-compatible traffic to the upstream and blocks tool calls that
 use an undeclared tool, reach a host appearing nowhere in the conversation, or trip
 atif-scan's checks. Point your agent's base URL at the listen address. Run `safeagents inspect`
-to see the calls it flagged. `safeagents start`, `ls` and `stop` run proxies in the background."""
+to see the calls it flagged. `safeagents start`, `ls` and `stop` run proxies in the background. `safeagents scrub` and `publish`
+redact trajectories before they are shared on the Hugging Face Hub."""
 
 START_TIMEOUT = 30.0
 STOP_TIMEOUT = 5.0
@@ -129,3 +130,22 @@ SSE_BOUNDARY = re.compile(rb"\r\n\r\n|\n\n")
 # definition, so they say nothing about it.
 TRACE_QUALITY = "integrity."
 ATIF_SCHEMA_VERSION = "ATIF-v1.7"
+
+# --- Scrub ---
+
+# Masks a credential, an environment secret or a `--redact` value.
+REDACTED = "***"
+JSON_SUFFIXES = (".json",)
+JSON_LINES_SUFFIXES = (".jsonl", ".ndjson")
+TEXT_SUFFIXES = (".txt", ".md", ".log")
+# Characters of redacted text shown before a finding (twice as many after).
+PREVIEW_CONTEXT = 30
+EMAIL_PATTERN = re.compile(
+    r"(?<![\w.+-])(?P<user>[\w.+-]+)@(?P<domain>[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})\b"
+)
+# `git@github.com:org/repo` is an SSH remote; noreply addresses and example domains are public.
+PUBLIC_EMAIL_USERS = frozenset({"git"})
+PUBLIC_EMAIL_DOMAINS = frozenset({"example.com", "example.org", "example.net", "users.noreply.github.com"})
+HOME_PATTERN = re.compile(r"(?P<root>/Users/|/home/|[A-Za-z]:\\{1,2}Users\\{1,2})(?P<user>[A-Za-z0-9._-]+)")
+# Home directories of containers and CI machines, not of a person.
+GENERIC_HOME_USERS = frozenset({"shared", "ubuntu", "runner", "user", "admin", "linuxbrew", "node", "app", "public"})
