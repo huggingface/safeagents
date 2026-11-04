@@ -35,6 +35,9 @@ The built-in host allowlist covers loopback, GitHub, PyPI, Hugging Face, npm and
 | `--no-env` | don't look for the values of this machine's secret-named environment variables |
 | `--no-pii` | only mask credentials; keep emails, home directories and public IPs |
 | `--out DIR` | (`scrub`) write redacted copies here |
+| `--show` | (`scrub`) list each distinct redacted value once, with its kind, how often it was redacted, and one example in context; values are hinted (`sk-p…(32 chars)`) |
+| `--show-all` | (`scrub`) list every redaction in context, file by file |
+| `--reveal` | (`scrub --show`, `--show-all`) print the redacted values in full |
 | `--path-in-repo DIR` | (`publish`) folder in the dataset |
 | `--public` | (`publish`) create the dataset public if it doesn't exist (default: private) |
 | `--dry-run` | (`publish`) redact and report, upload nothing |

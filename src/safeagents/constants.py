@@ -138,8 +138,22 @@ REDACTED = "***"
 JSON_SUFFIXES = (".json",)
 JSON_LINES_SUFFIXES = (".jsonl", ".ndjson")
 TEXT_SUFFIXES = (".txt", ".md", ".log")
+# Credentials atif-scan's `credentials.mask` leaves to its citation masking.
+AUTH_HEADER_PATTERN = re.compile(
+    r"(?i)\b(authorization|proxy-authorization)\s*[:=]\s*(?:(?:basic|token)\s+)?(?!bearer\b)[^\s\"']{8,}"
+)
+BEARER_PATTERN = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{8,}")
+URL_PASSWORD_PATTERN = re.compile(r"(://[^/\s:@]+):[^/\s@]+@")
+QUERY_SECRET_PATTERN = re.compile(r"(?i)([?&](?:token|key|sig|signature|access_token|api_key)=)[^&\s\"']+")
 # Characters of redacted text shown before a finding (twice as many after).
 PREVIEW_CONTEXT = 30
+# `scrub --show`: characters of a redacted value shown as a hint, and the fewest equal
+# characters that keep two changes apart.
+HINT_LENGTH = 4
+# `scrub --show` lists values in this order, then by count.
+KINDS = ("credential", "environment secret", "listed value", "email", "ip address", "home directory")
+PII_MARKERS = {"<email>": "email", "<ip>": "ip address", "<user>": "home directory"}
+CHANGE_GAP = 4
 EMAIL_PATTERN = re.compile(
     r"(?<![\w.+-])(?P<user>[\w.+-]+)@(?P<domain>[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})\b"
 )

@@ -20,7 +20,7 @@ import pytest
 
 from safeagents import Scrubber
 from safeagents.cli import main
-from safeagents.scrub import environment_secrets
+from safeagents.scrub import changes, environment_secrets
 
 KEY = "sk-proj-abcdefgh12345678ijklmnop"
 TRACE = {
@@ -96,6 +96,7 @@ def test_json_lines_stay_one_record_per_line(tmp_path):
     assert json.loads(records[0]) == {"role": "user", "content": "token ***"}
     assert records[2] == "not json"
     assert [finding.where for finding in findings] == ["line 1: content"]
+    assert records[1] == json.dumps(lines[1])  # untouched lines are kept byte for byte
 
 
 def test_clean_files_are_left_byte_for_byte(tmp_path):
@@ -118,6 +119,66 @@ def test_scrub_reports_and_writes_redacted_copies(tmp_path, capsys):
 
     main(["scrub", str(out), "--no-env"])  # nothing left: exits normally
     assert "0 strings to redact in 1 files" in capsys.readouterr().out
+
+
+def test_changes_are_whole_values_in_context():
+    original = f"key {KEY} for alice.doe@acme-corp.io\nHOME=/Users/alice"
+    redacted, _ = Scrubber(environment=False).redact_text(original)
+    found = changes(original, redacted)
+    assert [(change.old, change.new) for change in found] == [
+        (KEY, "***"),
+        ("alice.doe@acme-corp.io", "<email>"),
+        ("alice", "<user>"),
+    ]
+    assert all(redacted[change.start : change.end] == change.new for change in found)
+
+
+def test_code_is_not_taken_for_credentials():
+    scrubber = Scrubber(environment=False)
+    for code in (
+        'self.max_tokens = kwargs.get("max_tokens", 12000)',
+        "context.n_input_tokens = task.tokens",
+        "base_url, api_key = self._creds()",
+        "max_tokens=12000",
+    ):
+        assert scrubber.redact_text(code) == (code, [])
+    assert scrubber.redact_text("Authorization: Bearer abcdefghijkl123")[0] == "Authorization: Bearer ***"
+    assert scrubber.redact_text("https://bob:hunter2pass@host/x?token=abc123def&b=1")[0] == (
+        "https://bob:***@host/x?token=***&b=1"
+    )
+
+
+def test_keys_are_redacted_too():
+    record = {"trackedFileBackups": {"/Users/alice/Work/x.py": {"version": 1}}}
+    redacted, findings = Scrubber(environment=False).scrub(record)
+    assert redacted == {"trackedFileBackups": {"/Users/<user>/Work/x.py": {"version": 1}}}
+    assert [finding.where for finding in findings] == ["trackedFileBackups.(key)"]
+
+
+def test_scrub_show_lists_each_value_once(tmp_path, capsys):
+    path = tmp_path / "session.jsonl"
+    path.write_text("\n".join(json.dumps({"cwd": "/Users/alice/Work", "n": index}) for index in range(30)))
+    with pytest.raises(SystemExit):
+        main(["scrub", str(path), "--no-env", "--show"])
+    shown = capsys.readouterr().out.splitlines()
+    assert shown[0] == "1 distinct values, redacted 30 times in 1 files"
+    assert shown[1].split() == ["30×", "home", "directory", "a…(5", "chars)", "→", "<user>"]
+    assert shown[2].strip() == "session.jsonl line 1: cwd: /Users/[a…(5 chars) → <user>]/Work"
+    assert len(shown) == 3
+
+
+def test_scrub_show_all_hints_at_values_unless_revealed(tmp_path, capsys):
+    trace = write_trace(tmp_path)
+    with pytest.raises(SystemExit):
+        main(["scrub", str(trace), "--no-env", "--show-all"])
+    shown = capsys.readouterr().out
+    assert "trace.json\n  steps[0].message  email\n" in shown
+    assert "OPENAI_API_KEY=[sk-p…(32 chars) → ***]⏎HOME=/Users/<user>" in shown
+    assert KEY not in shown
+
+    with pytest.raises(SystemExit):
+        main(["scrub", str(trace), "--no-env", "--show-all", "--reveal"])
+    assert f"[{KEY} → ***]" in capsys.readouterr().out
 
 
 class FakeApi:

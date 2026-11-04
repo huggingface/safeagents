@@ -17,8 +17,8 @@
 A trajectory is any JSON, JSON-lines or text file (ATIF traces, harness session logs,
 request dumps). Every string in it is checked, wherever it sits, for:
 
-- credentials: atif-scan's masking (token shapes, secret-named values, auth headers,
-  URL passwords, OpenAI account ids). A value found once is masked everywhere it reappears.
+- credentials: atif-scan's credential shapes and secret-named values, auth headers,
+  URL passwords and OpenAI account ids. A value found once is masked everywhere it reappears.
 - the secrets in this machine's environment (`OPENAI_API_KEY=...`), even printed bare.
 - values listed with `--redact` (a name, a hostname, a project codename).
 - emails, home directories (`/Users/alice`) and public IP addresses.
@@ -30,45 +30,84 @@ is best-effort: review what `scrub` reports before publishing.
 from __future__ import annotations
 
 import argparse
+import dataclasses
+import difflib
 import ipaddress
 import json
 import os
 import shutil
 import sys
 import tempfile
-from collections.abc import Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from atif_scan.data import account_ids, credentials
-from atif_scan.evidence.cite import mask
+from rich.console import Console
+from rich.text import Text
 
 from .constants import (
+    AUTH_HEADER_PATTERN,
+    BEARER_PATTERN,
+    CHANGE_GAP,
     EMAIL_PATTERN,
     GENERIC_HOME_USERS,
+    HINT_LENGTH,
     HOME_PATTERN,
     IPV4_PATTERN,
     JSON_LINES_SUFFIXES,
     JSON_SUFFIXES,
+    KINDS,
+    PII_MARKERS,
     PREVIEW_CONTEXT,
     PUBLIC_EMAIL_DOMAINS,
     PUBLIC_EMAIL_USERS,
+    QUERY_SECRET_PATTERN,
     REDACTED,
     TEXT_SUFFIXES,
+    URL_PASSWORD_PATTERN,
 )
 
 
 @dataclass(frozen=True)
 class Finding:
-    """One redacted string: where it is, what was in it, and the string once redacted."""
+    """One redacted string: where it is, what was in it, and the string once redacted.
+    The string itself is kept out of `repr` and `str`, since it holds what was redacted."""
 
     file: str
     where: str
     kinds: tuple[str, ...]
     preview: str
+    original: str = field(default="", repr=False, compare=False)
+    redacted: str = field(default="", repr=False, compare=False)
 
     def __str__(self) -> str:
         return f"{self.file}  {self.where}  {', '.join(self.kinds)}  {self.preview}"
+
+
+@dataclass(frozen=True)
+class Change:
+    """One span redaction replaced: `old` became `new`, at `start`:`end` of the redacted string."""
+
+    old: str = field(repr=False)
+    new: str
+    start: int
+    end: int
+
+
+def changes(original: str, redacted: str) -> list[Change]:
+    """What redaction replaced in `original`, compared line by line, then character by
+    character within the changed lines."""
+    old_lines = original.splitlines(keepends=True)
+    new_lines = redacted.splitlines(keepends=True)
+    line_starts = [0]
+    for line in new_lines:
+        line_starts.append(line_starts[-1] + len(line))
+    found = []
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, old_lines, new_lines, autojunk=False).get_opcodes():
+        if tag != "equal":
+            found += _changed_spans("".join(old_lines[i1:i2]), "".join(new_lines[j1:j2]), line_starts[j1])
+    return found
 
 
 def environment_secrets(environ: Mapping[str, str] | None = None) -> frozenset[str]:
@@ -97,7 +136,7 @@ class Scrubber:
             if redacted != text:
                 kinds.append(kind)
                 text = redacted
-        redacted = mask(text, known)
+        redacted = _mask_credentials(text, known)
         if redacted != text:
             kinds.append("credential")
             text = redacted
@@ -115,14 +154,22 @@ class Scrubber:
         known = _known(_strings(document))
         findings: list[Finding] = []
 
+        def redact(value: str, where: str) -> str:
+            redacted, kinds = self.redact_text(value, known)
+            if kinds:
+                findings.append(Finding(file, where or "$", tuple(kinds), _preview(value, redacted), value, redacted))
+            return redacted
+
         def visit(value: object, where: str) -> object:
             if isinstance(value, str):
-                redacted, kinds = self.redact_text(value, known)
-                if kinds:
-                    findings.append(Finding(file, where or "$", tuple(kinds), _preview(value, redacted)))
-                return redacted
+                return redact(value, where)
             if isinstance(value, dict):
-                return {key: visit(item, f"{where}.{key}" if where else str(key)) for key, item in value.items()}
+                # Keys too: Claude Code keys some records by file path, home directory included.
+                redacted = {}
+                for key, item in value.items():
+                    key = redact(key, f"{where}.(key)" if where else "(key)")
+                    redacted[key] = visit(item, f"{where}.{key}" if where else key)
+                return redacted
             if isinstance(value, list):
                 return [visit(item, f"{where}[{index}]") for index, item in enumerate(value)]
             return value
@@ -147,12 +194,13 @@ class Scrubber:
         if suffix in JSON_LINES_SUFFIXES:
             return self._scrub_lines(text, name)
         redacted, findings = self.scrub(text, name)
-        return redacted, [Finding(f.file, "text", f.kinds, f.preview) for f in findings]
+        return redacted, [dataclasses.replace(finding, where="text") for finding in findings]
 
     def _scrub_lines(self, text: str, name: str) -> tuple[str, list[Finding]]:
         """JSON lines, one record at a time, with credentials masked across all of them."""
+        originals = text.splitlines()
         records: list[object] = []
-        for line in text.splitlines():
+        for line in originals:
             try:
                 records.append(json.loads(line))
             except ValueError:
@@ -160,9 +208,12 @@ class Scrubber:
         redacted, findings = self.scrub(records, name)
         if not findings:
             return text, []
+        # Lines with nothing redacted are kept as they were, so a diff shows only the redactions.
         lines = []
-        for original, record in zip(records, redacted, strict=True):
-            if isinstance(original, str):
+        for line, original, record in zip(originals, records, redacted, strict=True):
+            if record == original:
+                lines.append(line)
+            elif isinstance(original, str):
                 lines.append(record)
             else:
                 lines.append(json.dumps(record, ensure_ascii=False))
@@ -196,10 +247,22 @@ def scrub(argv: list[str]) -> None:
     )
     parser.add_argument("paths", nargs="+", type=Path, metavar="PATH", help="trajectory file or directory")
     parser.add_argument("--out", type=Path, metavar="DIR", help="write redacted copies here")
+    parser.add_argument(
+        "--show", action="store_true", help="show each distinct redacted value once, with a count and an example"
+    )
+    parser.add_argument("--show-all", action="store_true", help="show every redaction in context, file by file")
+    parser.add_argument("--reveal", action="store_true", help="with --show or --show-all, print values in full")
     _add_scrub_options(parser)
     args = parser.parse_args(argv)
     scrubber = _scrubber(args)
-    found = _scrub_into(scrubber, trajectory_files(args.paths), args.out)
+    report = print
+    if args.show_all:
+        report = _shower(args.reveal)
+    elif args.show:
+        report = None
+    found = _scrub_into(scrubber, trajectory_files(args.paths), args.out, report)
+    if args.show and not args.show_all:
+        _show_values(found, scrubber, args.reveal)
     if args.out:
         print(f"redacted copies in {args.out}")
     if found:
@@ -232,7 +295,7 @@ def publish(argv: list[str]) -> None:
         staged = Path(staging)
         found = _scrub_into(scrubber, files, staged)
         # Redaction must leave nothing a second pass would find.
-        leftover = _scrub_into(scrubber, trajectory_files(sorted(staged.iterdir())), None, quiet=True)
+        leftover = _scrub_into(scrubber, trajectory_files(sorted(staged.iterdir())), None, report=None)
         if leftover:
             sys.exit(f"safeagents: {len(leftover)} strings still look sensitive after redaction; nothing uploaded")
         target = f"datasets/{args.repo}" + (f"/{args.path_in_repo}" if args.path_in_repo else "")
@@ -271,9 +334,13 @@ def _scrubber(args: argparse.Namespace) -> Scrubber:
 
 
 def _scrub_into(
-    scrubber: Scrubber, files: list[tuple[Path, str]], out: Path | None, quiet: bool = False
+    scrubber: Scrubber,
+    files: list[tuple[Path, str]],
+    out: Path | None,
+    report: Callable[[Finding], None] | None = print,
 ) -> list[Finding]:
-    """Scrubs `files`, printing what was found and writing redacted copies under `out`."""
+    """Scrubs `files`, reporting what was found (unless `report` is None) and writing
+    redacted copies under `out`."""
     found: list[Finding] = []
     for path, name in files:
         try:
@@ -281,9 +348,9 @@ def _scrub_into(
         except UnicodeDecodeError:
             sys.exit(f"safeagents: {path} is not UTF-8 text")
         found += findings
-        if not quiet:
+        if report is not None:
             for finding in findings:
-                print(finding)
+                report(finding)
         if out is not None:
             target = out / name
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -291,9 +358,121 @@ def _scrub_into(
                 target.write_text(redacted, encoding="utf-8")
             else:
                 shutil.copyfile(path, target)
-    if not quiet:
+    if report is not None:
         print(f"{len(found)} strings to redact in {len(files)} files")
     return found
+
+
+def _shower(reveal: bool) -> Callable[[Finding], None]:
+    """Prints each redaction in context, under a header per file."""
+    console = Console(highlight=False)
+    shown_file = None
+
+    def show(finding: Finding) -> None:
+        nonlocal shown_file
+        if finding.file != shown_file:
+            console.print(Text(finding.file, style="bold underline"))
+            shown_file = finding.file
+        console.print(Text.assemble("  ", (finding.where, "bold"), "  ", (", ".join(finding.kinds), "cyan")))
+        for change in changes(finding.original, finding.redacted):
+            console.print(Text.assemble("    ", _in_context(finding.redacted, change, reveal)), soft_wrap=True)
+
+    return show
+
+
+def _show_values(findings: list[Finding], scrubber: Scrubber, reveal: bool) -> None:
+    """Prints each distinct redacted value once: its kind, how often it was redacted, and
+    where it was first seen, in context. Credentials first, then by count."""
+    values: dict[tuple[str, str], list] = {}  # (old, new) -> [count, files, first finding, first change]
+    for finding in findings:
+        for change in changes(finding.original, finding.redacted):
+            entry = values.setdefault((change.old, change.new), [0, set(), finding, change])
+            entry[0] += 1
+            entry[1].add(finding.file)
+    rows = []
+    for count, files, finding, change in values.values():
+        kind = _kind(change, scrubber)
+        rows.append((KINDS.index(kind), -count, kind, count, files, finding, change))
+    rows.sort(key=lambda row: row[:2])
+
+    console = Console(highlight=False)
+    total_files = len({finding.file for finding in findings})
+    total = sum(row[3] for row in rows)
+    console.print(f"{len(rows)} distinct values, redacted {total} times in {total_files} files")
+    for _, _, kind, count, files, finding, change in rows:
+        old = change.old if reveal else _hint(change.old)
+        spread = f"  in {len(files)} files" if len(files) > 1 else ""
+        console.print(
+            Text.assemble(
+                f"{count:>6}× ",
+                (f"{kind:<19}", "cyan"),
+                (_one_line(old), "red"),
+                " → ",
+                (change.new, "green"),
+                (spread, "dim"),
+            ),
+            soft_wrap=True,
+        )
+        console.print(
+            Text.assemble(
+                "        ", (f"{finding.file} {finding.where}: ", "dim"), _in_context(finding.redacted, change, reveal)
+            ),
+            soft_wrap=True,
+        )
+
+
+def _kind(change: Change, scrubber: Scrubber) -> str:
+    """What a redacted value was, from what replaced it or the lists it came from."""
+    if change.new in PII_MARKERS:
+        return PII_MARKERS[change.new]
+    if change.old in scrubber.listed:
+        return "listed value"
+    if change.old in scrubber.environment:
+        return "environment secret"
+    return "credential"
+
+
+def _in_context(redacted: str, change: Change, reveal: bool) -> Text:
+    """`before[old → new]after`, on one line, the old value hinted unless `reveal`."""
+    begin = max(0, change.start - PREVIEW_CONTEXT)
+    before = ("…" if begin else "") + redacted[begin : change.start]
+    after = redacted[change.end : change.end + PREVIEW_CONTEXT]
+    after += "…" if change.end + PREVIEW_CONTEXT < len(redacted) else ""
+    old = change.old if reveal else _hint(change.old)
+    return Text.assemble(
+        (_one_line(before), "dim"),
+        "[",
+        (_one_line(old), "red"),
+        " → ",
+        (_one_line(change.new), "green"),
+        "]",
+        (_one_line(after), "dim"),
+    )
+
+
+def _hint(value: str) -> str:
+    """The first few characters of a redacted value and its length, enough to recognise it."""
+    shown = min(HINT_LENGTH, len(value) // 3)
+    return f"{value[:shown]}…({len(value)} chars)"
+
+
+def _one_line(text: str) -> str:
+    return text.replace("\r", "").replace("\n", "⏎").replace("\t", " ")
+
+
+def _changed_spans(old: str, new: str, offset: int) -> list[Change]:
+    """Character-level changes from `old` to `new`, merging those separated by fewer than
+    `CHANGE_GAP` equal characters: `alice@acme.io` -> `<email>` is one change, not several
+    around the letters they share. Positions are offset by `offset`."""
+    spans: list[list[int]] = []  # old start, old end, new start, new end
+    for tag, a1, a2, b1, b2 in difflib.SequenceMatcher(None, old, new, autojunk=False).get_opcodes():
+        if tag == "equal":
+            continue
+        if spans and b1 - spans[-1][3] < CHANGE_GAP:
+            spans[-1][1], spans[-1][3] = a2, b2
+        else:
+            spans.append([a1, a2, b1, b2])
+    return [Change(old[a1:a2], new[b1:b2], offset + b1, offset + b2) for a1, a2, b1, b2 in spans]
 
 
 def _supported(path: Path) -> bool:
@@ -304,7 +483,8 @@ def _strings(value: object) -> Iterator[str]:
     if isinstance(value, str):
         yield value
     elif isinstance(value, dict):
-        for item in value.values():
+        for key, item in value.items():
+            yield key
             yield from _strings(item)
     elif isinstance(value, list):
         for item in value:
@@ -315,6 +495,33 @@ def _known(texts: Iterable[str]) -> frozenset[str]:
     """Credential values anywhere in the trajectory, to mask them where they reappear bare."""
     texts = list(texts)
     return credentials.values(texts) | account_ids.values(texts)
+
+
+def _mask_credentials(text: str, known: frozenset[str]) -> str:
+    """Credentials masked: atif-scan's credential shapes and secret-named values, OpenAI
+    account ids, auth headers, URL passwords and secret query parameters, and any `known`
+    value. Not atif-scan's citation masking, which also takes `max_tokens=12000` for a
+    secret: fine for a short excerpt, not for a trajectory people will read."""
+    text = _mask_spans(text, account_ids.spans(text))
+    text = credentials.PRIVATE_KEY.sub("[private key]", text)
+    text = AUTH_HEADER_PATTERN.sub(rf"\1: {REDACTED}", text)
+    text = BEARER_PATTERN.sub(f"Bearer {REDACTED}", text)
+    text = URL_PASSWORD_PATTERN.sub(rf"\1:{REDACTED}@", text)
+    text = QUERY_SECRET_PATTERN.sub(rf"\1{REDACTED}", text)
+    return credentials.mask(text, known)
+
+
+def _mask_spans(text: str, spans: list[tuple[int, int]]) -> str:
+    parts = []
+    last = 0
+    for start, end in sorted(spans):
+        if start >= last:
+            parts += [text[last:start], REDACTED]
+            last = end
+        else:
+            last = max(last, end)
+    parts.append(text[last:])
+    return "".join(parts)
 
 
 def _replace_values(text: str, values: frozenset[str]) -> str:
@@ -369,4 +576,4 @@ def _line_finding(finding: Finding) -> Finding:
     """`[3].messages[0].content` in a JSON-lines file becomes `line 4: messages[0].content`."""
     index, _, rest = finding.where[1:].partition("]")
     where = f"line {int(index) + 1}" + (f": {rest.lstrip('.')}" if rest else "")
-    return Finding(finding.file, where, finding.kinds, finding.preview)
+    return dataclasses.replace(finding, where=where)
