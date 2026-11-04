@@ -82,6 +82,37 @@ PYTHONPATH=. safeagents start http://localhost:8000 --plugin my_pack:checks --al
 
 From Python, pass them to the scanner: `Config(scanner=Scanner(load_plugin("my_pack:checks")))`.
 
+## Publishing trajectories
+
+`safeagents scrub` finds what you shouldn't share in agent trajectories (ATIF traces, session logs, any JSON, JSON lines or text): credentials, using atif-scan's credential detection (API keys, tokens, auth headers, private keys, secret-named values, URL passwords), the values of your own secret environment variables, emails, home directories and public IP addresses. A credential found once is masked wherever else it appears, even printed bare.
+
+```
+$ safeagents scrub runs/ --redact ProjectNebula --out redacted/
+runs/trace.json  steps[0].message  email  Fix the tests. Contact me at <email>
+runs/trace.json  steps[1].observation.results[0].content  credential, home directory  OPENAI_API_KEY=*** HOME=/Users/<user>
+runs/session.jsonl  line 2: content  listed value  ok, ***
+3 strings to redact in 2 files
+```
+
+To review what will be removed, add `--show`: each distinct value once, credentials first, with a count and where it was first seen (`--show-all` lists every occurrence, `--reveal` prints values in full):
+
+```
+$ safeagents scrub ~/.claude/projects/my-project/ --show
+7 distinct values, redacted 50 times in 3 files
+     3× credential         sk-p…(32 chars) → ***  in 2 files
+        session.jsonl line 41: out: OPENAI_API_KEY=[sk-p…(32 chars) → ***]
+    42× home directory     a…(5 chars) → <user>  in 2 files
+        session.jsonl line 1: cwd: /Users/[a…(5 chars) → <user>]/Work/harness-lens
+```
+
+`safeagents publish` does the same, checks the redacted copies again, and uploads only those to a Hugging Face dataset (private unless you pass `--public`), with your `hf auth login` token:
+
+```
+$ safeagents publish runs/ --repo me/agent-traces
+```
+
+JSON stays valid JSON (keys are redacted too), and files with nothing to redact are uploaded byte for byte. Redaction is best-effort: read the report before publishing. From Python: `Scrubber().scrub(trace)` returns the redacted trace and the findings.
+
 ## Benchmark
 
 [safeagents-judge-bench](https://huggingface.co/datasets/harness-hub/safeagents-judge-bench) scores decision models on 562 real agent tool calls that the scanner flags, each labelled `allow` or `block` with a kind of misuse (reward hacking, harness introspection, credential misuse, ...). Use its leaderboard to pick a `--judge-model`.
