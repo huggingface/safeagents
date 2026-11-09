@@ -173,6 +173,15 @@ uv run safeagents http://127.0.0.1:18081   # terminal 1
 uv run python scripts/simulate.py          # terminal 2, see --agents and --delay
 ```
 
+## Related work
+
+As stated previously, this work is based on [`atif-scan`](https://github.com/huggingface/atif-scan). Similar work proposes to tackle the same issue, not limited to:
+- [`CASA`](https://github.com/outshift-open/outshift-casa)
+- [`Hybrid Inspection and Task-Based Access Control in Zero-Trust Agentic AI`](https://arxiv.org/pdf/2605.02682)
+- [`Delegated Authorization for Agents Constrained to Semantic Task-to-Scope Matching`](https://arxiv.org/abs/2510.26702)
+
+If you believe that your work should be cited or integrated in this repository, feel free to directly open an issue on GitHub. 
+
 ## License
 
 Apache 2.0, see [LICENSE](LICENSE).

@@ -8,3 +8,4 @@ __pycache__/
 bench/out/
 bench*
 tests/test_bench.py
+redacted*
