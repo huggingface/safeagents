@@ -141,7 +141,7 @@ Run in the foreground (`safeagents URL`) and the terminal shows a live histogram
 
 `WARN` calls ran but raised a finding; `FLAG` ones would have been blocked without `--log-only`. A background proxy writes the same calls to its log, one line each.
 
-Blocked, flagged and suspicious calls are also kept in `~/.safeagents/calls.jsonl` (readable by you only, since arguments can hold secrets):
+Blocked, flagged and suspicious calls are also kept in `~/.safeagents/calls.jsonl` (readable by you only, since arguments can hold secrets). The format is in [docs/journal.md](docs/journal.md).
 
 ```
 $ safeagents inspect 3
