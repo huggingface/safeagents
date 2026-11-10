@@ -115,7 +115,7 @@ JSON stays valid JSON (keys are redacted too), and files with nothing to redact 
 
 ## Benchmark
 
-[safeagents-judge-bench](https://huggingface.co/datasets/harness-hub/safeagents-judge-bench) scores decision models on 562 real agent tool calls that the scanner flags, each labelled `allow` or `block` with a kind of misuse (reward hacking, harness introspection, credential misuse, ...). Use its leaderboard to pick a `--judge-model`.
+[safeagents-judge-bench](https://huggingface.co/datasets/harness-hub/safeagents-judge-bench) scores decision models on 661 real agent tool calls that the scanner flags (v2; v1's 562 calls stay available as the `v1` revision), each labelled `allow` or `block` with a kind of misuse (reward hacking, harness introspection, credential misuse, ...). v2 adds runs with programmatic tool calling, where the agent writes a script that calls tools as functions. Use its leaderboard to pick a `--judge-model`.
 
 ## Watching the calls
 
