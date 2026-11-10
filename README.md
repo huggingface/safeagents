@@ -179,6 +179,7 @@ As stated previously, this work is based on [`atif-scan`](https://github.com/hug
 - [`CASA`](https://github.com/outshift-open/outshift-casa)
 - [`Hybrid Inspection and Task-Based Access Control in Zero-Trust Agentic AI`](https://arxiv.org/pdf/2605.02682)
 - [`Delegated Authorization for Agents Constrained to Semantic Task-to-Scope Matching`](https://arxiv.org/abs/2510.26702)
+- [`Agentmetry`](https://github.com/blitzcrieg1/agentmetry): Agentmetry records the tool calls agents report through their hooks in a tamper-evident trail and forwards to a SIEM, so the two tools cover different layers.
 
 If you believe that your work should be cited or integrated in this repository, feel free to directly open an issue on GitHub. 
 
