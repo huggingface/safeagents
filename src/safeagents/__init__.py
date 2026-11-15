@@ -24,6 +24,7 @@ from .guard import Blocked, Config, Guard, Review, analyze, analyze_sync
 from .policy import Policy, declared_tools, extract_hosts
 from .scan import Scanner, load_plugin
 from .scrub import Finding, Scrubber
+from .sinks import load_sink
 
 __all__ = [
     "DEFAULT_ALLOWED_HOSTS",
@@ -40,4 +41,5 @@ __all__ = [
     "declared_tools",
     "extract_hosts",
     "load_plugin",
+    "load_sink",
 ]

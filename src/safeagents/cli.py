@@ -96,7 +96,18 @@ def main(argv: list[str] | None = None) -> None:
         metavar="PATH",
         help="file keeping every call that wasn't simply passed, with its full arguments (default %(default)s)",
     )
-    parser.add_argument("--no-journal", action="store_true", help="keep no record of flagged calls")
+    parser.add_argument(
+        "--no-journal",
+        action="store_true",
+        help="disable the local journal; configured sinks still receive observations",
+    )
+    parser.add_argument(
+        "--sink",
+        action="append",
+        default=[],
+        metavar="MODULE:FACTORY",
+        help="trusted callback for non-passed observations, including raw arguments and task (repeatable)",
+    )
     judge_group = parser.add_argument_group(
         "decision model", f"Reviews calls with milder findings. Its API key is read from {JUDGE_API_KEY_ENV}."
     )
@@ -123,6 +134,7 @@ def main(argv: list[str] | None = None) -> None:
     from .monitor import Monitor
     from .proxy import create_app
     from .scan import Scanner, load_plugin
+    from .sinks import load_sink
 
     scanner = None
     if not args.no_scan:
@@ -139,6 +151,7 @@ def main(argv: list[str] | None = None) -> None:
         judge=judge,
         judge_fail_closed=args.judge_fail_closed,
         journal=None if args.no_journal else Journal(Path(args.journal).expanduser()),
+        sinks=[load_sink(spec) for spec in args.sink],
     )
 
     host, _, port = args.listen.rpartition(":")
@@ -149,6 +162,8 @@ def main(argv: list[str] | None = None) -> None:
         setup_parts.append(f"judge {args.judge_url}")
     if config.journal:
         setup_parts.append(f"journal {config.journal.path}")
+    if config.sinks:
+        setup_parts.append(f"{len(config.sinks)} sink(s)")
     setup = ", ".join(setup_parts)
     logger.info("[safeagents] listening on http://%s -> %s (%s)", args.listen, args.upstream, setup)
     # Set by `safeagents start`: the lock tells `ls` and `stop` this proxy is running.
@@ -157,9 +172,12 @@ def main(argv: list[str] | None = None) -> None:
         from .runs import hold_lock
 
         lock_file = hold_lock(Path(lock))  # noqa: F841 (held until the process exits)
-    with Monitor(setup=f"{args.listen} → {args.upstream}") as config.monitor:
-        app = create_app(args.upstream, config)
-        uvicorn.run(app, host=host or "127.0.0.1", port=int(port), log_level="warning")
+    try:
+        with Monitor(setup=f"{args.listen} → {args.upstream}") as config.monitor:
+            app = create_app(args.upstream, config)
+            uvicorn.run(app, host=host or "127.0.0.1", port=int(port), log_level="warning")
+    finally:
+        config.close_sinks()
 
 
 def inspect(argv: list[str]) -> None:

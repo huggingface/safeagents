@@ -143,6 +143,8 @@ Run in the foreground (`safeagents URL`) and the terminal shows a live histogram
 
 Blocked, flagged and suspicious calls are also kept in `~/.safeagents/calls.jsonl` (readable by you only, since arguments can hold secrets). The format is in [docs/journal.md](docs/journal.md).
 
+An optional [`--sink MODULE:FACTORY`](docs/sink.md) sends those observations to a trusted callback off the response path, including with `--no-journal`. Sinks receive raw arguments and task text; enable them only for code you trust.
+
 ```
 $ safeagents inspect 3
 call #3, 2026-10-29 13:52:56

@@ -116,7 +116,10 @@ def create_app(upstream: str, config: Config, transport: httpx.AsyncBaseTranspor
     @contextlib.asynccontextmanager
     async def lifespan(app: Starlette) -> AsyncIterator[None]:
         async with client:
-            yield
+            try:
+                yield
+            finally:
+                config.close_sinks()
 
     # A single catch-all route: every path and method goes through `forward`.
     return Starlette(routes=[Route("/{path:path}", forward, methods=METHODS)], lifespan=lifespan)
