@@ -109,7 +109,9 @@ class Policy:
             return None
         # A URL's host counts anywhere in such a call (code often names the URL a line before it opens it). A bare IP
         # counts only on a line that reaches out: elsewhere it is data, like the log lines of a test fixture.
-        reaching = text if network_tool else "\n".join(line for line in text.splitlines() if NETWORK_PATTERN.search(line))
+        reaching = (
+            text if network_tool else "\n".join(line for line in text.splitlines() if NETWORK_PATTERN.search(line))
+        )
         url_hosts = [host for host in extract_hosts(text) if not IPV4_PATTERN.fullmatch(host)]
         for host in sorted({*url_hosts, *extract_hosts(reaching)}):
             if host in self.context:

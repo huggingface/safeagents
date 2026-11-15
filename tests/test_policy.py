@@ -57,9 +57,14 @@ def test_host_in_written_data_is_fine():
     request = bash_request("Write a CLF log parser and a click log generator, with tests.")
     request["tools"].append({"type": "function", "function": {"name": "write"}})
     policy = Policy(request)
-    line = "10.0.0.1 - bob [10/Oct/2000:13:55:36 -0700] \\\"GET /a HTTP/1.0\\\" 200 5 \\\"http://x.com\\\" \\\"curl/7.68.0\\\""
+    line = (
+        '10.0.0.1 - bob [10/Oct/2000:13:55:36 -0700] \\"GET /a HTTP/1.0\\" 200 5 \\"http://x.com\\" \\"curl/7.68.0\\"'
+    )
     assert policy.check("write", f'{{"path": "test_clf.py", "content": "LINE = \\"{line}\\""}}') is None
-    assert policy.check("bash", "{\"command\": \"printf 'user_000,2026-08-01T00:00:00Z,http://a.com\\\\n' > clicks.csv\"}") is None
+    assert (
+        policy.check("bash", '{"command": "printf \'user_000,2026-08-01T00:00:00Z,http://a.com\\\\n\' > clicks.csv"}')
+        is None
+    )
     assert policy.check("write", '{"content": "# see http://home.online.no/~pjacklam/notes/invnorm/"}') is None
     assert policy.check("bash", '{"command": "python3 -m http.server 8080 --bind 0.0.0.0 &"}') is None
 
@@ -67,7 +72,9 @@ def test_host_in_written_data_is_fine():
 def test_reserved_hosts_are_fine_and_requests_are_still_checked():
     policy = Policy(bash_request("hi"), allowed_hosts=())
     assert policy.check("bash", '{"cmd": "curl https://click.example.com/x https://example.org"}') is None
-    assert policy.check("bash", '{"cmd": "python -c \\"import requests; requests.get(\'https://www.google.com/search?q=task\')\\""}')
+    assert policy.check(
+        "bash", '{"cmd": "python -c \\"import requests; requests.get(\'https://www.google.com/search?q=task\')\\""}'
+    )
     assert policy.check("web_fetch", '{"url": "https://en.wikipedia.org/wiki/Genetic_code"}') == "undeclared tool"
     request = bash_request("hi")
     request["tools"].append({"type": "function", "function": {"name": "web_extract"}})
