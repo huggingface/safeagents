@@ -57,9 +57,26 @@ DEFAULT_ALLOWED_HOSTS = (
     "crates.io",
 )
 
+# Domains reserved for examples (RFC 2606), allowed on top of any allowlist: no one can register them, so a call
+# reaches no one through them. Generated data and test fixtures use them all the time.
+RESERVED_HOSTS = ("example.com", "example.net", "example.org")
+
+# What lets a call reach a host: a network client in a command or in code, or a tool that fetches. A URL anywhere else
+# (a CSV row, a log line in a test fixture, a docstring citation) is data the call writes, not a request it makes.
+NETWORK_PATTERN = re.compile(
+    r"\b(?:curl|wget|nc|ncat|netcat|telnet|ssh|scp|sftp|rsync|ftp)\s"
+    r"|\bgit\s+(?:clone|fetch|pull|push|ls-remote)\b|\bpip3?\s+install\b|/dev/(?:tcp|udp)/"
+    r"|\brequests\.(?:get|post|put|patch|delete|head|options|request|Session)\b|\burlopen\(|\burllib\.request\b"
+    r"|\bhttpx\.|\baiohttp\.|\bhttp\.client\b|\bsocket\.(?:socket|create_connection)\b|\bfetch\(",
+    re.IGNORECASE,
+)
+# Tools that reach a URL by themselves (`web_fetch`, `browser_exec`, ...), whatever their arguments say.
+NETWORK_TOOL_PATTERN = re.compile(r"fetch|browse|browser|web|http|url|download", re.IGNORECASE)
+
 AUTHORITY_PATTERN = re.compile(r"://([^\s/?#\"'\\`)\]>]*)")
 HOST_PATTERN = re.compile(r"[a-z0-9.-]*")
-IPV4_PATTERN = re.compile(r"(?<![\d.])\d{1,3}(?:\.\d{1,3}){3}(?![\d.])")
+# Not after `=`: `pkg==0.5.1.4` is a version, not an address
+IPV4_PATTERN = re.compile(r"(?<![\d.=])\d{1,3}(?:\.\d{1,3}){3}(?![\d.])")
 
 # --- Judge ---
 

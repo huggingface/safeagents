@@ -20,7 +20,7 @@ from atif_scan import Allowance, CheckSpec, RegexDetector, Severity, parse_trace
 from atif_scan.data.model import Channel
 from conftest import bash_request
 
-from safeagents import Config, Guard
+from safeagents import Config, Guard, scan
 from safeagents.judge import Judge
 from safeagents.scan import Scanner, call_step, history, load_plugin
 
@@ -211,3 +211,50 @@ def test_load_plugin(tmp_path):
     assert load_plugin(f"{pack}:checks") == ["a check"]
     with pytest.raises(ValueError, match="MODULE:FACTORY"):
         load_plugin("atif_scan.packs.tblite")
+
+
+@pytest.fixture
+def hub(tmp_path, monkeypatch):
+    """A Hub repo served from `tmp_path`: the Hub itself cannot be reached from tests. Records each download."""
+    (tmp_path / "pack.py").write_text(
+        "def checks():\n    return ['a check']\n\ndef strict():\n    return ['a strict check']\n"
+    )
+    (tmp_path / "other.py").write_text("def checks():\n    return ['another check']\n")
+    downloads = []
+
+    def download(repo_id, filename, repo_type=None, revision=None):
+        downloads.append((repo_id, filename, repo_type, revision))
+        return str(tmp_path / filename)
+
+    import huggingface_hub
+
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", download)
+    monkeypatch.setattr(
+        huggingface_hub.HfApi,
+        "list_repo_files",
+        lambda self, repo_id, repo_type=None, revision=None: ["README.md", "pack.py"],
+    )
+    return downloads
+
+
+def test_load_plugin_from_hub(hub):
+    # The only Python file at the root, its `checks`, the main branch of a model repo
+    assert load_plugin("hf://harness-hub/qwen-safeagents-plugin") == ["a check"]
+    assert hub[-1] == ("harness-hub/qwen-safeagents-plugin", "pack.py", "model", None)
+    # A file, a revision, a factory, a dataset repo
+    assert load_plugin("hf://datasets/harness-hub/plugins@v1/other.py") == ["another check"]
+    assert hub[-1] == ("harness-hub/plugins", "other.py", "dataset", "v1")
+    assert load_plugin("hf://harness-hub/qwen-safeagents-plugin@abc123/pack.py:strict") == ["a strict check"]
+    assert hub[-1] == ("harness-hub/qwen-safeagents-plugin", "pack.py", "model", "abc123")
+
+
+def test_load_plugin_from_hub_needs_one_file(hub, monkeypatch):
+    import huggingface_hub
+
+    monkeypatch.setattr(
+        huggingface_hub.HfApi, "list_repo_files", lambda self, repo_id, repo_type=None, revision=None: ["a.py", "b.py"]
+    )
+    with pytest.raises(ValueError, match="name the plugin file"):
+        load_plugin("hf://harness-hub/two-files")
+    with pytest.raises(ValueError, match="OWNER/REPO"):
+        scan.hub_plugin_file("hf://harness-hub")

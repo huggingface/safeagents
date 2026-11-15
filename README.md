@@ -52,7 +52,7 @@ Streaming adds no latency: each tool call is held until its arguments are comple
 
 ## Plugins
 
-`--plugin MODULE:FACTORY` (or `path/to/file.py:FACTORY`) adds your own [atif-scan](https://github.com/huggingface/atif-scan) checks, with the same convention as atif-scan's `--plugin`: `FACTORY()` returns a list of detectors, rules and allowances. Detectors and rules at or above `--block-severity` block, like the built-in ones. An allowance excuses the findings of the checks it covers, for a task that legitimately does what a check flags. `--allow-host` adds hosts calls may reach.
+`--plugin MODULE:FACTORY` (or `path/to/file.py:FACTORY`, or `hf://OWNER/REPO` for a plugin on the Hub, below) adds your own [atif-scan](https://github.com/huggingface/atif-scan) checks, with the same convention as atif-scan's `--plugin`: `FACTORY()` returns a list of detectors, rules and allowances. Detectors and rules at or above `--block-severity` block, like the built-in ones. An allowance excuses the findings of the checks it covers, for a task that legitimately does what a check flags. `--allow-host` adds hosts calls may reach.
 
 ```python
 # my_pack.py
@@ -81,6 +81,23 @@ PYTHONPATH=. safeagents start http://localhost:8000 --plugin my_pack:checks --al
 ```
 
 From Python, pass them to the scanner: `Config(scanner=Scanner(load_plugin("my_pack:checks")))`.
+
+### Plugins on the Hugging Face Hub
+
+A plugin can live in a Hub repo as a single Python file, and be loaded by name:
+
+```
+safeagents start http://localhost:8000 --plugin hf://harness-hub/qwen-safeagents-plugin
+```
+
+The full form is `hf://[TYPE/]OWNER/REPO[@REV][/FILE][:FACTORY]`:
+
+- `TYPE`: `datasets/` or `spaces/` for those repos; a model repo when left out.
+- `@REV`: a branch, tag or commit.
+- `/FILE`: the file in the repo; by default the only `.py` file at the repo's root.
+- `:FACTORY`: `checks` by default.
+
+The file is downloaded once and cached by `huggingface_hub`, so it also loads offline (`HF_HUB_OFFLINE=1`); a private repo needs a token (`hf auth login` or `HF_TOKEN`). The plugin runs as code in the proxy's process, so load plugins only from repos you trust, and pin a commit (`hf://harness-hub/qwen-safeagents-plugin@<commit>`) for reproducible runs. To publish one: `hf upload harness-hub/my-plugin my_pack.py`.
 
 ## Publishing trajectories
 

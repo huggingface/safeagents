@@ -82,7 +82,8 @@ def main(argv: list[str] | None = None) -> None:
         action="append",
         default=[],
         metavar="MODULE:FACTORY",
-        help="atif-scan checks to add: detectors and rules that block, allowances that excuse (repeatable)",
+        help="atif-scan checks to add: detectors and rules that block, allowances that excuse (repeatable). "
+        "MODULE:FACTORY, path/to/file.py:FACTORY, or a file on the Hugging Face Hub: hf://OWNER/REPO[@REV][/FILE][:FACTORY]",
     )
     parser.add_argument(
         "--block-severity",

@@ -139,23 +139,71 @@ def recent(steps: list[dict], agent_steps: int = 20) -> list[dict]:
     return [step for index, step in enumerate(steps) if index not in dropped]
 
 
+HUB_PREFIX = "hf://"
+HUB_REPO_TYPES = {"models": "model", "datasets": "dataset", "spaces": "space"}
+
+
 def load_plugin(spec: str) -> list:
     """The checks `module:factory` returns, as atif-scan's `--plugin` takes them (e.g. `my_pack:checks`).
 
-    The module may also be a file, `path/to/my_pack.py:checks`. A plugin returns atif-scan detectors and
-    rules, which can add blocks, and allowances, which excuse the findings of the checks they cover (e.g.
-    reading a file the task itself hands the agent).
+    The module may also be a file, `path/to/my_pack.py:checks`, or a file on the Hugging Face Hub,
+    `hf://owner/repo` (see [`hub_plugin_file`]). A plugin returns atif-scan detectors and rules, which can add blocks,
+    and allowances, which excuse the findings of the checks they cover (e.g. reading a file the task itself hands the
+    agent).
     """
+    if spec.startswith(HUB_PREFIX):
+        path, factory = hub_plugin_file(spec)
+        return load_file(path, factory)
     module, _, factory = spec.rpartition(":")
     if not module or not factory:
         raise ValueError(f"plugin must be MODULE:FACTORY, got {spec!r}")
     if module.endswith(".py"):
-        file_spec = importlib.util.spec_from_file_location(Path(module).stem, module)
-        loaded = importlib.util.module_from_spec(file_spec)
-        file_spec.loader.exec_module(loaded)
-    else:
-        loaded = importlib.import_module(module)
+        return load_file(module, factory)
+    return list(getattr(importlib.import_module(module), factory)())
+
+
+def load_file(path: str, factory: str) -> list:
+    """The checks `factory()` returns, from the Python file at `path`."""
+    file_spec = importlib.util.spec_from_file_location(Path(path).stem, path)
+    loaded = importlib.util.module_from_spec(file_spec)
+    file_spec.loader.exec_module(loaded)
     return list(getattr(loaded, factory)())
+
+
+def hub_plugin_file(spec: str) -> tuple[str, str]:
+    """The local copy of a plugin on the Hugging Face Hub, and its factory: `hf://[TYPE/]OWNER/REPO[@REV][/FILE][:FACTORY]`.
+
+    - `TYPE`: `datasets` or `spaces` for those repos; a model repo otherwise.
+    - `REV`: a branch, tag or commit. Pin a commit: the file runs as code in this process.
+    - `FILE`: the file in the repo; by default the only `.py` file at its root.
+    - `FACTORY`: `checks` by default.
+
+    `hf://harness-hub/qwen-safeagents-plugin` is the `checks` of the only Python file of that model repo, at its main
+    branch. The file is downloaded once and cached (it also loads offline, with `HF_HUB_OFFLINE=1`).
+    """
+    from huggingface_hub import HfApi, hf_hub_download
+
+    rest = spec[len(HUB_PREFIX) :]
+    rest, _, factory = rest.rpartition(":") if ":" in rest else (rest, "", "checks")
+    parts = rest.split("/")
+    repo_type = HUB_REPO_TYPES.get(parts[0], "model")
+    if parts[0] in HUB_REPO_TYPES:
+        parts = parts[1:]
+    if len(parts) < 2 or not all(parts[:2]) or not factory:
+        raise ValueError(f"Hub plugin must be hf://[TYPE/]OWNER/REPO[@REV][/FILE][:FACTORY], got {spec!r}")
+    name, _, revision = parts[1].partition("@")
+    repo_id, filename = f"{parts[0]}/{name}", "/".join(parts[2:])
+    if not filename:
+        files = HfApi().list_repo_files(repo_id, repo_type=repo_type, revision=revision or None)
+        candidates = [f for f in files if f.endswith(".py") and "/" not in f]
+        if len(candidates) != 1:
+            raise ValueError(
+                f"{spec}: name the plugin file, e.g. hf://{repo_id}/FILE.py; Python files at the repo root: {candidates}"
+            )
+        filename = candidates[0]
+    path = hf_hub_download(repo_id, filename, repo_type=repo_type, revision=revision or None)
+    logger.info("[safeagents] plugin %s: %s", spec, path)
+    return path, factory
 
 
 class Scanner:
