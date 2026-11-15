@@ -18,7 +18,15 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable
 
-from .constants import AUTHORITY_PATTERN, DEFAULT_ALLOWED_HOSTS, HOST_PATTERN, IPV4_PATTERN
+from .constants import (
+    AUTHORITY_PATTERN,
+    DEFAULT_ALLOWED_HOSTS,
+    HOST_PATTERN,
+    IPV4_PATTERN,
+    NETWORK_PATTERN,
+    NETWORK_TOOL_PATTERN,
+    RESERVED_HOSTS,
+)
 
 
 def declared_tools(request: dict) -> set[str]:
@@ -49,6 +57,30 @@ def extract_hosts(text: str) -> list[str]:
     return sorted(hosts)
 
 
+def call_text(args: str) -> str:
+    """The text a call's raw JSON arguments carry: every string value, decoded (a command's newlines are real again).
+
+    Matching the raw JSON instead reads an escaped newline before `cat` as `ncat`, a network client."""
+    try:
+        value = json.loads(args)
+    except ValueError:
+        return args
+    strings = []
+
+    def walk(item):
+        if isinstance(item, str):
+            strings.append(item)
+        elif isinstance(item, dict):
+            for nested in item.values():
+                walk(nested)
+        elif isinstance(item, list):
+            for nested in item:
+                walk(nested)
+
+    walk(value)
+    return "\n".join(strings)
+
+
 class Policy:
     """What a request allows its response to call."""
 
@@ -64,13 +96,22 @@ class Policy:
                 if not (isinstance(message, dict) and message.get("role") == "assistant")
             ]
         self.context = json.dumps(context, ensure_ascii=False).lower()
-        self.allowed_hosts = [host.lower() for host in allowed_hosts]
+        self.allowed_hosts = [host.lower() for host in (*allowed_hosts, *RESERVED_HOSTS)]
 
     def check(self, name: str, args: str) -> str | None:
         """Why a call to `name` with raw `args` should be blocked, if it should."""
         if name not in self.declared:
             return "undeclared tool"
-        for host in extract_hosts(args):
+        # A host only matters in a call that can reach it: one in a file the call writes is data
+        text = call_text(args)
+        network_tool = NETWORK_TOOL_PATTERN.search(name)
+        if not (network_tool or NETWORK_PATTERN.search(text)):
+            return None
+        # A URL's host counts anywhere in such a call (code often names the URL a line before it opens it). A bare IP
+        # counts only on a line that reaches out: elsewhere it is data, like the log lines of a test fixture.
+        reaching = text if network_tool else "\n".join(line for line in text.splitlines() if NETWORK_PATTERN.search(line))
+        url_hosts = [host for host in extract_hosts(text) if not IPV4_PATTERN.fullmatch(host)]
+        for host in sorted({*url_hosts, *extract_hosts(reaching)}):
             if host in self.context:
                 continue
             if any(host == allowed or host.endswith("." + allowed) for allowed in self.allowed_hosts):
