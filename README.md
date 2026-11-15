@@ -2,6 +2,8 @@
 
 A lightweight local proxy between your agent and its model server. It checks every tool call the model makes before the harness sees it, and swaps the calls it blocks for a text notice, so the harness runs nothing. It works with any harness that lets you set a base URL (Claude Code, Pi, Hermes, OpenCode, ...), over OpenAI Chat Completions or Anthropic Messages, streaming or not.
 
+You want to plug a decision model in the loop? Pick one of the decision model from [safeagents judge bench leaderboard](https://huggingface.co/datasets/harness-hub/safeagents-judge-bench).
+
 ## Quickstart
 
 On macOS, Linux or WSL:
