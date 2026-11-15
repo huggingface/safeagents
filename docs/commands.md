@@ -21,7 +21,8 @@
 | `--judge-url`, `--judge-model` | the decision model; its API key comes from `SAFEAGENTS_JUDGE_API_KEY` |
 | `--judge-fail-closed` | block suspicious calls when the judge errors or gives no verdict (default: allow and log) |
 | `--journal PATH` | where flagged calls are kept (default `~/.safeagents/calls.jsonl`, format in [journal.md](journal.md)) |
-| `--no-journal` | keep no record of them |
+| `--no-journal` | disable the local journal; explicitly configured sinks still receive observations |
+| `--sink MODULE:FACTORY` | trusted callback for non-passed observations, including raw arguments and task; repeatable (see [sink.md](sink.md)) |
 
 The built-in host allowlist covers loopback, GitHub, PyPI, Hugging Face, npm and crates.io.
 

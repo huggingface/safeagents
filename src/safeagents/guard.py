@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
@@ -34,6 +35,7 @@ from .judge import Judge, JudgeError, task_text
 from .monitor import Monitor
 from .policy import Policy
 from .scan import Scanner, Signal, history, recent
+from .sinks import Sink, SinkDispatcher
 from .utils import compact_json
 
 logger = logging.getLogger("safeagents")
@@ -55,6 +57,18 @@ class Config:
     monitor: Monitor | None = None
     # Keeps calls that weren't simply passed, for `safeagents inspect`.
     journal: Journal | None = None
+    # Trusted callbacks receive journal-shaped data, including arguments/task.
+    sinks: Sequence[Sink] = field(default=(), repr=False)
+    _sink_dispatcher: SinkDispatcher | None = field(init=False, default=None, repr=False)
+
+    def __post_init__(self) -> None:
+        if self.sinks:
+            self._sink_dispatcher = SinkDispatcher(tuple(self.sinks))
+
+    def close_sinks(self) -> None:
+        """Stop best-effort delivery without waiting for callback code."""
+        if self._sink_dispatcher is not None:
+            self._sink_dispatcher.close()
 
 
 @dataclass(frozen=True)
@@ -116,21 +130,27 @@ class Guard:
 
         call_id = None
         journal = self.config.journal
-        if verdict != "passed" and journal is not None:
+        dispatcher = self.config._sink_dispatcher
+        if verdict != "passed" and (journal is not None or dispatcher is not None):
             journal_signals = [
                 {"id": signal.id, "severity": signal.severity.name.lower(), "title": signal.title}
                 for signal in review.signals
             ]
-            call_id = journal.append(
-                verdict=verdict,
-                tool=name,
-                arguments=args,
-                reason=review.reason,
-                signals=journal_signals,
-                judge=review.judge,
-                model=str(self.request.get("model") or ""),
-                task=task_text(self.request),
-            )
+            entry = {
+                "time": time.time(),
+                "verdict": verdict,
+                "tool": name,
+                "arguments": args,
+                "reason": review.reason,
+                "signals": journal_signals,
+                "judge": review.judge,
+                "model": str(self.request.get("model") or ""),
+                "task": task_text(self.request),
+            }
+            if journal is not None:
+                call_id = journal.append(**entry)
+            if dispatcher is not None:
+                dispatcher.publish({"id": call_id, **entry})
 
         monitor = self.config.monitor
         if monitor is not None:
