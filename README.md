@@ -44,7 +44,7 @@ stopped 1  http://127.0.0.1:8787 -> https://api.anthropic.com
 
 Each tool call goes through three stages:
 
-1. **Request-only checks.** A call is blocked if it uses a tool the request never declared, or if its arguments contain a host (URL or bare IP) that appears nowhere in the conversation. The model's own earlier turns don't count.
+1. **Request-only checks.** A call is blocked if it uses a tool the request never declared, or if its arguments contain a host (URL or bare IP) that appears nowhere in the conversation. The model's own earlier turns don't count. Calls against the proxy itself (stopping or killing it, editing `~/.safeagents`, redirecting the harness's base URL) are blocked too.
 2. **[atif-scan](https://github.com/huggingface/atif-scan) checks.** The conversation becomes an ATIF trace, so atif-scan's detectors run on the pending call: reading `/proc/1/environ`, `curl --noproxy`, a Kubernetes service-account token, `unshare`/`nsenter`, ... Findings at or above `--block-severity` (default `high`) are blocked, milder ones make the call suspicious.
 3. **Decision model** (optional). Suspicious calls go to a judge model, which answers `allow` or `block`. Without a judge, they are only logged.
 

@@ -78,6 +78,11 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--log-only", action="store_true", help="report flagged calls without changing responses")
     parser.add_argument("--no-scan", action="store_true", help="turn atif-scan's checks off")
     parser.add_argument(
+        "--no-self-protection",
+        action="store_true",
+        help="don't block calls the agent makes against the proxy itself (stop/kill, journal, base URL)",
+    )
+    parser.add_argument(
         "--plugin",
         action="append",
         default=[],
@@ -146,6 +151,7 @@ def main(argv: list[str] | None = None) -> None:
         judge = Judge(args.judge_url, args.judge_model, api_key, args.judge_timeout)
     config = Config(
         block=not args.log_only,
+        self_protection=not args.no_self_protection,
         allowed_hosts=[*DEFAULT_ALLOWED_HOSTS, *args.allow_host],
         scanner=scanner,
         block_severity=Severity[args.block_severity.upper()],

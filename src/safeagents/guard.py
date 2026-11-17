@@ -35,6 +35,7 @@ from .judge import Judge, JudgeError, task_text
 from .monitor import Monitor
 from .policy import Policy
 from .scan import Scanner, Signal, history, recent
+from .selfprotect import self_protection_reason
 from .sinks import Sink, SinkDispatcher
 from .utils import compact_json
 
@@ -45,6 +46,9 @@ logger = logging.getLogger("safeagents")
 class Config:
     # Replace flagged tool calls instead of only logging them.
     block: bool = True
+    # Block calls the agent makes against the proxy itself (stop/kill it, edit its
+    # journal, redirect the harness, drop an allowance). Not excusable by a plugin.
+    self_protection: bool = True
     # Hosts tool calls may reach even if the conversation never mentions them.
     allowed_hosts: Sequence[str] = DEFAULT_ALLOWED_HOSTS
     # None turns atif-scan off.
@@ -113,6 +117,12 @@ class Guard:
     async def review(self, name: str, args: str) -> Review:
         """Reviews a complete call without blocking, logging or recording it."""
         self._calls.append((name, args))
+        # Self-protection runs first and outside the scanner, so a plugin allowance,
+        # which only excuses atif-scan findings, cannot lift it.
+        if self.config.self_protection:
+            self_reason = self_protection_reason(name, args)
+            if self_reason is not None:
+                return Review(self_reason)
         policy_reason = self.policy.check(name, args)
         if policy_reason is not None:
             return Review(policy_reason)
