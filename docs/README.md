@@ -17,7 +17,7 @@ Harnesses that only speak the OpenAI Responses API or the Gemini API can be rout
 | 1 | [OpenClaw](openclaw.md) | Anthropic Messages, Chat Completions | supported |
 | 2 | [DeepSeek Harness](deepseek-harness.md) | Anthropic Messages, Chat Completions | supported (API key) |
 | 3 | [Hermes Agent](hermes-agent.md) | Anthropic Messages, Chat Completions | supported |
-| 4 | [OpenCode](opencode.md) | Anthropic Messages, Chat Completions | supported |
+| 4 | [OpenCode](opencode.md) | Anthropic Messages, Chat Completions | supported (1.x and 2.x) |
 | 5 | [GitHub Copilot (VS Code)](copilot-vscode.md) | Anthropic Messages, Chat Completions | BYOK models only |
 | 6 | [Claude Code](claude-code.md) | Anthropic Messages | supported |
 | 7 | [Codex CLI](codex.md) | Responses API only | not supported yet |

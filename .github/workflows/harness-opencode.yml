@@ -1,6 +1,7 @@
 # Runs the real OpenCode CLI through safeagents against a scripted model (tests/harnesses).
-# Pull requests test the OpenCode version docs/opencode.md was checked against; pushes
-# to main also test the latest release, to catch OpenCode changes that break the guide.
+# Pull requests test the OpenCode 1.x and 2.x versions docs/opencode.md was checked
+# against; pushes to main also test the latest 2.x release, to catch OpenCode changes
+# that break the guide. 1.x and 2.x are different npm packages.
 name: harness / opencode
 
 on:
@@ -18,8 +19,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        opencode-version: ${{ fromJSON(github.event_name == 'pull_request' && '["1.19.3"]' || '["1.19.3", "latest"]') }}
-    name: opencode ${{ matrix.opencode-version }}
+        opencode: ${{ fromJSON(github.event_name == 'pull_request' && '["opencode-ai@1.19.3", "@opencode/cli@2.3.0"]' || '["opencode-ai@1.19.3", "@opencode/cli@2.3.0", "@opencode/cli@latest"]') }}
+    name: ${{ matrix.opencode }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -34,14 +35,11 @@ jobs:
       - name: Install safeagents
         run: uv sync --locked
 
-      - name: Install OpenCode ${{ matrix.opencode-version }}
+      - name: Install ${{ matrix.opencode }}
         env:
-          OPENCODE_VERSION: ${{ matrix.opencode-version }}
+          OPENCODE_PACKAGE: ${{ matrix.opencode }}
         run: |
-          # opencode-ai's `latest` npm tag can point at a dev build (0.0.0-dev-...), and
-          # npm resolves `*` to that tag too. `>=1` skips prereleases: the newest release.
-          if [ "$OPENCODE_VERSION" = "latest" ]; then OPENCODE_VERSION=">=1"; fi
-          npm install --global --no-audit --no-fund "opencode-ai@${OPENCODE_VERSION}"
+          npm install --global --no-audit --no-fund "$OPENCODE_PACKAGE"
           opencode --version
 
       - name: Run OpenCode through safeagents
