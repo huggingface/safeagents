@@ -101,7 +101,24 @@ The full form is `hf://[TYPE/]OWNER/REPO[@REV][/FILE][:FACTORY]`:
 - `/FILE`: the file in the repo; by default the only `.py` file at the repo's root.
 - `:FACTORY`: `checks` by default.
 
-The file is downloaded once and cached by `huggingface_hub`, so it also loads offline (`HF_HUB_OFFLINE=1`); a private repo needs a token (`hf auth login` or `HF_TOKEN`). The plugin runs as code in the proxy's process, so load plugins only from repos you trust, and pin a commit (`hf://harness-hub/qwen-safeagents-plugin@<commit>`) for reproducible runs. To publish one: `hf upload harness-hub/my-plugin my_pack.py`.
+The file is downloaded once and cached by `huggingface_hub`, so it also loads offline (`HF_HUB_OFFLINE=1`); a private repo needs a token (`hf auth login` or `HF_TOKEN`). The plugin runs as code in the proxy's process, so load plugins only from repos you trust, and pin a commit (`hf://harness-hub/qwen-safeagents-plugin@<commit>`) for reproducible runs.
+
+#### Community plugins
+
+Plugins shared on the Hub are gathered in the [safeagents plugins collection](https://huggingface.co/collections/harness-hub/safeagents-plugins). For example, [`harness-hub/dotenv-guard`](https://huggingface.co/harness-hub/safeagents-dotenv-plugin) blocks commands that send a `.env` file or a credential over the network:
+
+```
+safeagents start http://localhost:8000 --plugin hf://harness-hub/safeagents-dotenv-plugin
+```
+
+#### Share your own plugin
+
+Wrote a check that caught something? Put it on the Hub so others can load it with one flag:
+
+1. Keep the plugin in a single Python file whose `checks()` returns your detectors, rules and allowances.
+2. Add a `README.md` saying what it flags and what it lets through, with the `safeagents-plugin` tag in its metadata (see [plugins/dotenv_guard](plugins/dotenv_guard) for one).
+3. Upload the folder holding both: `hf upload YOUR_NAME/my-plugin ./my-plugin .` (after `hf auth login`).
+4. Open an issue or PR here with the link, and we'll add it to the collection.
 
 ## Publishing trajectories
 
