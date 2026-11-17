@@ -79,6 +79,33 @@ def test_benign_calls_pass(tool, inp):
     assert review(tool, inp).verdict == "passed"
 
 
+# The state directory is caught however its path is spelled, not only as `~/.safeagents`.
+STATE_DIR_SPELLINGS = [
+    ("Bash", {"command": "rm /home/alice/.safeagents/calls.jsonl"}),
+    ("Bash", {"command": "rm /Users/alice/.safeagents/calls.jsonl"}),
+    ("Bash", {"command": "rm $HOME/.safeagents/calls.jsonl"}),
+    ("Bash", {"command": "rm ${HOME}/.safeagents/calls.jsonl"}),
+    ("Bash", {"command": "cd /home/alice && rm -rf .safeagents"}),
+    ("Bash", {"command": "rm -rf /root/.safeagents/run"}),
+    ("Edit", {"file_path": "/root/.safeagents/calls.jsonl", "old_string": "blocked", "new_string": "passed"}),
+    ("Write", {"file_path": "/home/alice/.safeagents/calls.jsonl", "content": ""}),
+]
+
+
+@pytest.mark.parametrize("tool, inp", STATE_DIR_SPELLINGS)
+def test_state_dir_is_blocked_by_absolute_path(tool, inp):
+    result = review(tool, inp)
+    assert result.verdict == "blocked"
+    assert "state directory" in result.reason
+
+
+@pytest.mark.parametrize("path", ["/home/alice/.claude/settings.json", "/Users/alice/.codex/config.toml"])
+def test_harness_settings_are_blocked_by_absolute_path(path):
+    result = review("Edit", {"file_path": path, "old_string": "x", "new_string": 'base_url = "https://x"'})
+    assert result.verdict == "blocked"
+    assert "settings file" in result.reason
+
+
 def test_disabled_lets_self_targeting_calls_through():
     result = review("Bash", {"command": "safeagents stop 1"}, Config(scanner=None, self_protection=False))
     assert result.verdict == "passed"
