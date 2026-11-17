@@ -105,20 +105,11 @@ The file is downloaded once and cached by `huggingface_hub`, so it also loads of
 
 #### Community plugins
 
-Plugins shared on the Hub are gathered in the [safeagents plugins collection](https://huggingface.co/collections/harness-hub/safeagents-plugins). For example, [`harness-hub/dotenv-guard`](https://huggingface.co/harness-hub/safeagents-dotenv-plugin) blocks commands that send a `.env` file or a credential over the network:
+Plugins shared on the Hub are gathered in the [safeagents plugins collection](https://huggingface.co/collections/harness-hub/safeagents-plugins). For example, [`harness-hub/safeagents-dotenv-plugin`](https://huggingface.co/harness-hub/safeagents-dotenv-plugin) blocks commands that send a `.env` file or a credential over the network:
 
 ```
 safeagents start http://localhost:8000 --plugin hf://harness-hub/safeagents-dotenv-plugin
 ```
-
-#### Share your own plugin
-
-Wrote a check that caught something? Put it on the Hub so others can load it with one flag:
-
-1. Keep the plugin in a single Python file whose `checks()` returns your detectors, rules and allowances.
-2. Add a `README.md` saying what it flags and what it lets through, with the `safeagents-plugin` tag in its metadata (see [plugins/dotenv_guard](plugins/dotenv_guard) for one).
-3. Upload the folder holding both: `hf upload YOUR_NAME/my-plugin ./my-plugin .` (after `hf auth login`).
-4. Open an issue or PR here with the link, and we'll add it to the collection.
 
 ## Publishing trajectories
 
