@@ -106,7 +106,9 @@ def run_opencode(home: Path, workdir: Path, scenario: str) -> str:
     # The prompt goes on stdin: `opencode run` wraps message arguments that contain
     # spaces in quotes and escapes their double quotes, which garbles the EXTRA marker.
     completed = subprocess.run(
-        [OPENCODE_BIN, "run", "--format", "json"],
+        # Its logs go to stderr, which a failure prints: `opencode run` itself only reports
+        # "Unexpected server error. Check server logs for details."
+        [OPENCODE_BIN, "run", "--format", "json", "--print-logs", "--log-level", "INFO"],
         cwd=project,
         env=env,
         input=scenario_prompt(scenario, tool=SHELL_TOOL, extra=SHELL_EXTRA),
