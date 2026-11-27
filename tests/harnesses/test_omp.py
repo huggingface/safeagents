@@ -18,6 +18,7 @@ Skipped unless `omp` is installed (or `OMP_BIN` points at it).
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import shutil
@@ -98,6 +99,21 @@ def run_omp(home: Path, workdir: Path, provider: str, scenario: str) -> str:
     return completed.stdout
 
 
+@contextlib.contextmanager
+def diagnosed(model: FakeModel, output: str):
+    """On a failed check, shows the tools OMP declared and the end of its output."""
+    try:
+        yield
+    except AssertionError as error:
+        declared = [
+            [tool.get("name") or (tool.get("function") or {}).get("name") for tool in body.get("tools") or []]
+            for _, body in model.requests
+        ]
+        raise AssertionError(
+            f"{error}\ndeclared tools per request: {declared}\nomp output tail:\n{output[-3000:]}"
+        ) from error
+
+
 @pytest.fixture
 def workdir(tmp_path) -> Path:
     path = tmp_path / "work"
@@ -111,7 +127,8 @@ def test_flagged_call_is_blocked(stack, omp_home, workdir, provider, scenario, r
     model, proxy = stack
     model.requests.clear()
     output = run_omp(omp_home, workdir, provider, scenario)
-    check_blocked(model, proxy, output, scenario, SHELL_TOOL, reason)
+    with diagnosed(model, output):
+        check_blocked(model, proxy, output, scenario, SHELL_TOOL, reason)
 
 
 @pytest.mark.parametrize("provider", list(PROVIDERS))
@@ -119,4 +136,5 @@ def test_clean_call_runs(stack, omp_home, workdir, provider):
     model, _ = stack
     model.requests.clear()
     output = run_omp(omp_home, workdir, provider, "clean")
-    check_ran(model, output)
+    with diagnosed(model, output):
+        check_ran(model, output)
