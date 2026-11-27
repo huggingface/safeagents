@@ -43,6 +43,12 @@ DEFAULT_JOURNAL_PATH = Path.home() / ".safeagents" / "calls.jsonl"
 
 # --- Policy ---
 
+# Tools whose results load more tools on demand: Claude Code's ToolSearch answers with `tool_reference` blocks or,
+# when the upstream lacks them, the schemas inline as `<function>{...}</function>`. The loaded tools are absent from
+# the request's `tools`, yet declared all the same.
+TOOL_SEARCH_TOOLS = frozenset({"ToolSearch"})
+LOADED_FUNCTION_PATTERN = re.compile(r"<function>(.*?)</function>", re.DOTALL)
+
 # Hosts that may appear in tool calls even if the conversation never mentions them.
 DEFAULT_ALLOWED_HOSTS = (
     "localhost",

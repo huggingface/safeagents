@@ -59,7 +59,7 @@ Ask Claude Code to list the files in the current directory. The safeagents termi
 - Headers are forwarded unchanged, `anthropic-beta` included, so API keys and subscription logins both keep working.
 - `/v1/messages/count_tokens` requests also go through the proxy. They are forwarded but not counted as model turns.
 - With a custom base URL, Claude Code turns off Remote Control, and tool search is off behind non-first-party gateways. The WebFetch domain check still goes straight to `api.anthropic.com`, not through the proxy.
-- Claude Code declares every tool on every request, so the undeclared-tool check shouldn't fire. The host check will flag WebFetch calls to docs Claude knows without being told about them, such as `docs.rs`. Run with `--log-only` for a while, add the hosts you trust with `--allow-host`, then drop `--log-only`.
+- Claude Code declares most tools on every request and loads the rest (MCP tools, `Monitor`, `TaskStop`) on demand through ToolSearch. A tool loaded that way counts as declared, so the undeclared-tool check shouldn't fire. The host check will flag WebFetch calls to docs Claude knows without being told about them, such as `docs.rs`. Run with `--log-only` for a while, add the hosts you trust with `--allow-host`, then drop `--log-only`.
 - Amazon Bedrock, Google Cloud Agent Platform and Microsoft Foundry use their own clients and endpoints. Those setups don't go through `ANTHROPIC_BASE_URL`, so this guide doesn't cover them.
 
 ## Sources
