@@ -23,14 +23,16 @@ from .constants import (
     DEFAULT_ALLOWED_HOSTS,
     HOST_PATTERN,
     IPV4_PATTERN,
+    LOADED_FUNCTION_PATTERN,
     NETWORK_PATTERN,
     NETWORK_TOOL_PATTERN,
     RESERVED_HOSTS,
+    TOOL_SEARCH_TOOLS,
 )
 
 
 def declared_tools(request: dict) -> set[str]:
-    """Tool names in the request's `tools`: OpenAI `function.name`, Anthropic `name`."""
+    """Tool names in the request's `tools` (OpenAI `function.name`, Anthropic `name`), plus those loaded on demand."""
     names = set()
     for tool in request.get("tools") or []:
         if not isinstance(tool, dict):
@@ -39,6 +41,62 @@ def declared_tools(request: dict) -> set[str]:
         name = function.get("name") if isinstance(function, dict) else tool.get("name")
         if isinstance(name, str):
             names.add(name)
+    return names | loaded_tools(request, names & TOOL_SEARCH_TOOLS)
+
+
+def loaded_tools(request: dict, searchers: set[str]) -> set[str]:
+    """Tools the results of calls to `searchers` loaded: Anthropic `tool_reference` blocks and inline
+    `<function>{...}</function>` schemas. Only those results count: any other tool's output (a fetched page)
+    could name a tool to slip it past the check."""
+    if not searchers:
+        return set()
+    messages = [message for message in request.get("messages") or [] if isinstance(message, dict)]
+    search_ids = set()
+    for message in messages:
+        if message.get("role") != "assistant":
+            continue
+        content = message.get("content")
+        for block in content if isinstance(content, list) else []:
+            if isinstance(block, dict) and block.get("type") == "tool_use" and block.get("name") in searchers:
+                search_ids.add(block.get("id"))
+        for call in message.get("tool_calls") or []:
+            function = call.get("function") if isinstance(call, dict) else None
+            if isinstance(function, dict) and function.get("name") in searchers:
+                search_ids.add(call.get("id"))
+    search_ids.discard(None)
+    results = []
+    for message in messages:
+        if message.get("role") == "tool" and message.get("tool_call_id") in search_ids:
+            results.append(message.get("content"))
+        content = message.get("content")
+        for block in content if isinstance(content, list) else []:
+            if (
+                isinstance(block, dict)
+                and block.get("type") == "tool_result"
+                and block.get("tool_use_id") in search_ids
+            ):
+                results.append(block.get("content"))
+    names = set()
+
+    def walk(item):
+        if isinstance(item, str):
+            for schema in LOADED_FUNCTION_PATTERN.findall(item):
+                try:
+                    name = json.loads(schema).get("name")
+                except (ValueError, AttributeError):
+                    continue
+                if isinstance(name, str):
+                    names.add(name)
+        elif isinstance(item, list):
+            for nested in item:
+                walk(nested)
+        elif isinstance(item, dict):
+            if item.get("type") == "tool_reference" and isinstance(item.get("tool_name"), str):
+                names.add(item["tool_name"])
+            walk(item.get("text"))
+            walk(item.get("content"))
+
+    walk(results)
     return names
 
 
