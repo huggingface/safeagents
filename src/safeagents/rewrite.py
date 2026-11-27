@@ -189,6 +189,11 @@ class StreamGuard:
             return None
         if isinstance(event.get("choices"), list):
             return await self._openai_chunk(event)
+        if "error" in event:
+            # A mid-stream error (OpenRouter sends one after HTTP 200): the held calls will never complete, so drop them
+            # rather than release them half-built when the stream ends.
+            self.held = None
+            self.pending.clear()
         return None
 
     async def _release_block(self, held: _HeldBlock) -> list[bytes | dict]:
