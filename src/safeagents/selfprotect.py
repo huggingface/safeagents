@@ -55,8 +55,15 @@ _BASE_URL_ENV = re.compile(
     re.IGNORECASE,
 )
 # Harness config files that carry the base URL / provider, so editing them redirects the harness.
-_HARNESS_SETTINGS = re.compile(r"\.claude/settings(?:\.local)?\.json|\.codex/config\.toml", re.IGNORECASE)
-_BASE_URL_KEY = re.compile(r"base[_-]?url|baseURL|model_provider|openai_base_url", re.IGNORECASE)
+_HARNESS_SETTINGS = re.compile(
+    r"\.claude/settings(?:\.local)?\.json|\.codex/config\.toml"
+    # pi and OMP: `~/.pi/agent/models.json`, `~/.omp/agent/models.yml`, `~/.omp/profiles/<name>/agent/models.yml`
+    r"|\.(?:pi|omp)/(?:profiles/[^/\s\"']+/)?agent/models\.(?:json|ya?ml)"
+    r"|\bopencode\.jsonc?\b|\.qwen/settings\.json|\.vibe/(?:agents/[^/\s\"']+|config)\.toml"
+    r"|\.openhands/(?:agent_settings\.json|profiles/)|\.dsh/profiles/",
+    re.IGNORECASE,
+)
+_BASE_URL_KEY = re.compile(r"base[_-]?url|baseURL|api_base|model_provider|openai_base_url", re.IGNORECASE)
 # A written file that defines an atif-scan allowance is a configuration change: it would
 # excuse a detector the next time the proxy loads plugins.
 _ALLOWANCE_WRITE = re.compile(r"atif_scan|atif-scan").search

@@ -1,0 +1,45 @@
+# Runs the real OMP (oh-my-pi) CLI through safeagents against a scripted model (tests/harnesses).
+# Pull requests test the OMP version docs/omp.md was checked against; pushes to main
+# also test the latest release, to catch OMP changes that break the guide.
+name: harness / omp
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  omp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        omp-version: ${{ fromJSON(github.event_name == 'pull_request' && '["19.1.1"]' || '["19.1.1", "latest"]') }}
+    name: omp ${{ matrix.omp-version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+
+      # OMP runs on Bun only (>= 1.4.4).
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+
+      - name: Install safeagents
+        run: uv sync --locked
+
+      - name: Install omp ${{ matrix.omp-version }}
+        run: |
+          bun install --global @oh-my-pi/pi-coding-agent@${{ matrix.omp-version }}
+          echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
+          "$HOME/.bun/bin/omp" --version
+
+      - name: Run omp through safeagents
+        run: uv run pytest tests/harnesses/test_omp.py -v --durations=0
