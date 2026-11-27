@@ -157,6 +157,20 @@ def test_openai_stream_is_reassembled_and_checked(plain):
     assert out.endswith("data: [DONE]\n\n")
 
 
+def test_openai_stream_error_drops_half_built_call(plain):
+    error = {"error": {"code": 502, "message": "Provider returned error"}}
+    stream = "".join(
+        [
+            ": OPENROUTER PROCESSING\n\n",
+            openai_chunk(tool_delta(0, "bash", '{"cmd": "rm -rf /tmp/build')),
+            f"data: {json.dumps(error)}\n\n",
+        ]
+    )
+    out = run_stream(SseRewriter(Guard(bash_request("hi"), plain)), stream, 7)
+    assert "rm -rf" not in out
+    assert out.endswith(f"data: {json.dumps(error)}\n\n")
+
+
 def multiline(event: str, newline: str) -> str:
     """Spreads each event's JSON over several `data:` lines, as SSE allows."""
     out = []
