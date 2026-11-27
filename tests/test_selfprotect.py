@@ -99,11 +99,31 @@ def test_state_dir_is_blocked_by_absolute_path(tool, inp):
     assert "state directory" in result.reason
 
 
-@pytest.mark.parametrize("path", ["/home/alice/.claude/settings.json", "/Users/alice/.codex/config.toml"])
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/home/alice/.claude/settings.json",
+        "/Users/alice/.codex/config.toml",
+        "~/.omp/agent/models.yml",
+        "/home/alice/.omp/profiles/work/agent/models.yaml",
+        "~/.pi/agent/models.json",
+        "~/.config/opencode/opencode.json",
+        "~/.qwen/settings.json",
+        "./.vibe/config.toml",
+        "~/.openhands/agent_settings.json",
+    ],
+)
 def test_harness_settings_are_blocked_by_absolute_path(path):
     result = review("Edit", {"file_path": path, "old_string": "x", "new_string": 'base_url = "https://x"'})
     assert result.verdict == "blocked"
     assert "settings file" in result.reason
+
+
+def test_harness_config_without_a_base_url_is_fine():
+    assert (
+        review("Edit", {"file_path": "~/.omp/agent/models.yml", "new_string": "models: [{id: x}]"}).verdict == "passed"
+    )
+    assert review("Write", {"file_path": "docs/models.yml", "content": "baseUrl: x"}).verdict == "passed"
 
 
 def test_disabled_lets_self_targeting_calls_through():
