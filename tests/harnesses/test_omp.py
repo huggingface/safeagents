@@ -38,6 +38,9 @@ PROVIDERS = {
     "safeagents-anthropic": ("anthropic-messages", False),
     "safeagents-openai": ("openai-completions", True),
 }
+# The shell tool's name on the wire: over Anthropic Messages, OMP declares its tools with a `_` prefix and strips it
+# from the model's calls, so the model (and safeagents) see `_bash`.
+WIRE_SHELL_TOOL = {"safeagents-anthropic": "_bash", "safeagents-openai": SHELL_TOOL}
 
 
 @pytest.fixture(scope="module")
@@ -83,7 +86,7 @@ def run_omp(home: Path, workdir: Path, provider: str, scenario: str) -> str:
         f"{provider}/fake-model",
         "--tools",
         SHELL_TOOL,
-        scenario_prompt(scenario, tool=SHELL_TOOL),
+        scenario_prompt(scenario, tool=WIRE_SHELL_TOOL[provider]),
     ]
     completed = subprocess.run(
         command,
@@ -128,7 +131,7 @@ def test_flagged_call_is_blocked(stack, omp_home, workdir, provider, scenario, r
     model.requests.clear()
     output = run_omp(omp_home, workdir, provider, scenario)
     with diagnosed(model, output):
-        check_blocked(model, proxy, output, scenario, SHELL_TOOL, reason)
+        check_blocked(model, proxy, output, scenario, WIRE_SHELL_TOOL[provider], reason)
 
 
 @pytest.mark.parametrize("provider", list(PROVIDERS))

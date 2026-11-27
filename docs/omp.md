@@ -59,6 +59,7 @@ Start `omp` with the proxied model and ask it to list the files in the repo. The
 - **Web search, MCP servers and the browser** reach the network directly, not through the model provider.
 - **`.env` files** (`./.env`, `~/.omp/agent/.env`, `~/.omp/.env`, `~/.env`) can set `ANTHROPIC_BASE_URL` and `OPENAI_BASE_URL`. A `baseUrl` in `models.yml` wins for the provider it's on.
 - At startup OMP probes local Ollama (11434), llama.cpp (8080) and LM Studio (1234) ports, and lists models for every built-in provider it has a key for. These aren't model calls.
+- **Over Anthropic Messages, OMP sends its tools with a `_` prefix** (`_bash`, `_read`, ...) and strips it from the model's calls. safeagents' journal and notices show the prefixed name, so use it in plugin rules and allowances. Over Chat Completions the names are unchanged.
 - Self-protection blocks tool calls that set a base URL in `models.yml`, including profile copies.
 
 ## Sources
